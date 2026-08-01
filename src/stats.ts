@@ -1,13 +1,14 @@
 import "./style.css";
 import { drawChart, setupCanvas } from "./render";
-import type {
-  BattleConfig,
-  BattleStatus,
-  HistoryPoint,
-  KillStats,
-  WingOutcome,
-  WingState,
-  Winner,
+import {
+  CAVALRY_PER_DOT,
+  type BattleConfig,
+  type BattleStatus,
+  type HistoryPoint,
+  type KillStats,
+  type WingOutcome,
+  type WingState,
+  type Winner,
 } from "./simulation";
 
 const STORAGE_KEY = "war-sim-last-battle";
@@ -126,8 +127,8 @@ function renderKillTable(b: SavedBattle): void {
           `<td>${Math.round(kills[i].artillery)}</td>` +
           `<td>${Math.round(fin.guns)}</td>` +
           `<td>${Math.round(init.guns - fin.guns)}</td>` +
-          `<td>${Math.round(fin.cavalry ?? 0)}</td>` +
-          `<td>${Math.round((init.cavalry ?? 0) - (fin.cavalry ?? 0))}</td>` +
+          `<td>${Math.round((fin.cavalry ?? 0) * CAVALRY_PER_DOT)}</td>` +
+          `<td>${Math.round(((init.cavalry ?? 0) - (fin.cavalry ?? 0)) * CAVALRY_PER_DOT)}</td>` +
           `<td>${Math.round(orgFinal[i] * 100)}%</td>` +
           `<td>${status}</td>` +
           `</tr>`,
@@ -172,8 +173,14 @@ function renderConfig(b: SavedBattle): void {
     ["蓝方梯队（前/中/后）", ratioText(c.blueEchelon)],
     ["红方火炮（左/中/右）", c.redArtillery.join(" / ")],
     ["蓝方火炮（左/中/右）", c.blueArtillery.join(" / ")],
-    ["红方骑兵（左/中/右）", (c.redCavalry ?? []).join(" / ")],
-    ["蓝方骑兵（左/中/右）", (c.blueCavalry ?? []).join(" / ")],
+    [
+      "红方骑兵（左/中/右）",
+      (c.redCavalry ?? []).map((v) => v * CAVALRY_PER_DOT).join(" / "),
+    ],
+    [
+      "蓝方骑兵（左/中/右）",
+      (c.blueCavalry ?? []).map((v) => v * CAVALRY_PER_DOT).join(" / "),
+    ],
   ];
   query("#config-list").innerHTML = items
     .map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`)

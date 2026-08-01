@@ -9,6 +9,7 @@ import {
   type Simulation,
   ROUT_DURATION,
   RETREAT_DURATION,
+  CAVALRY_PER_DOT,
   cavalryIconCount,
   formationRows,
   gunIconCount,
@@ -174,13 +175,27 @@ export function drawBattlefield(
     );
 
     // 骑兵阵地：位于步兵阵型与火炮之间（三角图标，冲锋时实心高亮）
+    const redRows = formationRows(
+      redWing.front,
+      redWing.middle,
+      redWing.rear,
+      i,
+      sim.config.rowWidth,
+    );
+    const blueRows = formationRows(
+      blueWing.front,
+      blueWing.middle,
+      blueWing.rear,
+      i,
+      sim.config.rowWidth,
+    );
     drawWingCavalry(
       ctx,
       cx,
       redWing.cavalry,
       "red",
       RED_COLOR,
-      cavalryY("red", height),
+      cavalryY("red", height, redRows, centerY - gap, 52),
       cavalryAttackingIcons(sim, "red", i),
     );
     drawWingCavalry(
@@ -189,7 +204,7 @@ export function drawBattlefield(
       blueWing.cavalry,
       "blue",
       BLUE_COLOR,
-      cavalryY("blue", height),
+      cavalryY("blue", height, blueRows, centerY + gap, height - 70),
       cavalryAttackingIcons(sim, "blue", i),
     );
 
@@ -462,7 +477,7 @@ function drawWingLabel(
     ctx.font = `10px ${SERIF}`;
     ctx.fillStyle = MUTED_COLOR;
     ctx.fillText(
-      `前 ${Math.round(front)} · 中 ${Math.round(middle)} · 后 ${Math.round(rear)} · 炮 ${Math.round(guns)} · 骑 ${Math.round(cavalry)} · 组 ${Math.round(org * 100)}% · 气 ${morale.toFixed(2)}`,
+      `前 ${Math.round(front)} · 中 ${Math.round(middle)} · 后 ${Math.round(rear)} · 炮 ${Math.round(guns)} · 骑 ${Math.round(cavalry * CAVALRY_PER_DOT)} · 组 ${Math.round(org * 100)}% · 气 ${morale.toFixed(2)}`,
       x,
       yDetail,
     );
@@ -517,9 +532,22 @@ function cavalryIconXs(centerX: number, cavalry: number): number[] {
   return Array.from({ length: icons }, (_, i) => startX + i * spacing);
 }
 
-/** 骑兵阵地纵坐标：位于步兵阵型与火炮阵地之间 */
-function cavalryY(side: "red" | "blue", height: number): number {
-  return side === "red" ? 39 : height - 53;
+/** 骑兵阵地纵坐标：位于步兵阵型后缘与炮兵阵地正中间（随阵型行数自适应） */
+function cavalryY(
+  side: "red" | "blue",
+  height: number,
+  rows: readonly FormationRow[],
+  nearY: number,
+  farY: number,
+): number {
+  const totalRows = Math.max(1, rows.length);
+  const space = Math.abs(farY - nearY);
+  const spacing =
+    totalRows > 1 ? Math.max(2, Math.min(8, space / (totalRows - 1))) : 0;
+  const dir = nearY <= farY ? 1 : -1;
+  const last = rows[rows.length - 1];
+  const rearY = last ? nearY + dir * last.row * spacing : nearY;
+  return (batteryY(side, height) + rearY) / 2;
 }
 
 /** 骑兵图标：指向敌方的一排三角；蓄力为空心，冲锋为实心高亮 */
@@ -600,30 +628,19 @@ function formationDotXY(
   const row = rows.find((r) => r.row === dot.row);
   const count = row?.count ?? 0;
   return [
-    centerX + (dot.col - (count - 1) / 2) * rowDotSpacing(rows, row, wingWidth),
+    centerX +
+      (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth),
     nearY + dir * dot.row * spacing,
   ];
 }
 
-/** 翼内统一行宽的基准间距：以最满的一排为准，使满排行恰好横贯翼宽 */
+/** 翼内统一的横向点间距：以最满的一排为准；点少时保持 8px，满排行横贯翼宽 */
 function formationRowSpacing(
   rows: readonly FormationRow[],
   wingWidth: number,
 ): number {
   const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 1);
   return Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
-}
-
-/** 某排横向点间距：前/中/后排共用同一行宽，排内按各自点数均匀分布 */
-function rowDotSpacing(
-  rows: readonly FormationRow[],
-  row: FormationRow | undefined,
-  wingWidth: number,
-): number {
-  const count = row?.count ?? 0;
-  if (count <= 1) return DOT_SPACING;
-  const maxCount = rows.reduce((max, r) => Math.max(max, r.count), 1);
-  return ((maxCount - 1) * formationRowSpacing(rows, wingWidth)) / (count - 1);
 }
 
 /** 攻击对象 → 画布坐标 */
@@ -860,7 +877,8 @@ function drawCavalryArrows(
   const wingWidth = (width - wingMargin * 2) / 3;
   for (const charge of sim.getCavalryCharges()) {
     const wings = charge.side === "red" ? sim.redWings : sim.blueWings;
-    const cavalry = wings[charge.wing].cavalry;
+    const wing = wings[charge.wing];
+    const cavalry = wing.cavalry;
     const icons = cavalryIconCount(cavalry);
     const centerX = wingMargin + wingWidth * (charge.wing + 0.5);
     const xs = cavalryIconXs(centerX, cavalry);
@@ -869,7 +887,15 @@ function drawCavalryArrows(
       Math.floor((charge.unitIndex * icons) / Math.max(1, cavalry)),
     );
     const sx = xs[icon] ?? centerX;
-    const sy = cavalryY(charge.side, height);
+    const { nearY, farY } = formationBounds(charge.side, height);
+    const rows = formationRows(
+      wing.front,
+      wing.middle,
+      wing.rear,
+      charge.wing,
+      sim.config.rowWidth,
+    );
+    const sy = cavalryY(charge.side, height, rows, nearY, farY);
     const [tx, ty] = attackTargetXY(
       { kind: "dot", dot: charge.target },
       width,
@@ -947,9 +973,19 @@ function drawKillMarks(
   }
   // 被消灭的骑兵图标也标红叉（按图标死亡时的总数复原坐标）
   for (const mark of sim.getKilledCavalryIcons()) {
+    const wings = mark.side === "red" ? sim.redWings : sim.blueWings;
+    const wing = wings[mark.wing];
     const centerX = wingMargin + wingWidth * (mark.wing + 0.5);
     const x = cavalryIconXs(centerX, mark.count)[mark.icon] ?? centerX;
-    const y = cavalryY(mark.side, height);
+    const { nearY, farY } = formationBounds(mark.side, height);
+    const rows = formationRows(
+      wing.front,
+      wing.middle,
+      wing.rear,
+      mark.wing,
+      sim.config.rowWidth,
+    );
+    const y = cavalryY(mark.side, height, rows, nearY, farY);
     drawKillMark(ctx, x, y);
   }
 }
@@ -981,10 +1017,10 @@ function drawWingFormation(
   const fillColor = routing ? "#8f8b84" : color;
   const ringColor = routing ? "#8f8b84" : softColor;
   const alpha = routing ? 0.55 : 1;
+  const dotSpacing = formationRowSpacing(rows, wingWidth);
 
   for (const row of rows) {
     const y = nearY + dir * row.row * spacing;
-    const dotSpacing = rowDotSpacing(rows, row, wingWidth);
     // 点半径随横纵实际间距缩小，点数不设上限也不重叠
     const minSpacing = Math.min(dotSpacing, spacing || dotSpacing);
     const radius = Math.max(0.8, minSpacing * 0.46);

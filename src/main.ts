@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   Simulation,
+  CAVALRY_PER_DOT,
   type BattleStatus,
   type BattleConfig,
   type CounterBatteryChoice,
@@ -263,11 +264,11 @@ function updateHud(sim: Simulation): void {
   redHud.textContent =
     `红方 前 ${Math.round(sim.redFront)} · 中 ${Math.round(sim.redMiddle)}` +
     ` · 后 ${Math.round(sim.redRear)} · 火炮 ${Math.round(redGuns)}` +
-    ` · 骑兵 ${Math.round(redCavalry)} · 组 ${Math.round(avgOrg("red"))}%`;
+    ` · 骑兵 ${Math.round(redCavalry * CAVALRY_PER_DOT)} · 组 ${Math.round(avgOrg("red"))}%`;
   blueHud.textContent =
     `蓝方 前 ${Math.round(sim.blueFront)} · 中 ${Math.round(sim.blueMiddle)}` +
     ` · 后 ${Math.round(sim.blueRear)} · 火炮 ${Math.round(blueGuns)}` +
-    ` · 骑兵 ${Math.round(blueCavalry)} · 组 ${Math.round(avgOrg("blue"))}%`;
+    ` · 骑兵 ${Math.round(blueCavalry * CAVALRY_PER_DOT)} · 组 ${Math.round(avgOrg("blue"))}%`;
   // 整回合结算：时间始终为整数回合
   timeHud.textContent = `第 ${sim.time.toFixed(0)} 次`;
   statusHud.textContent = statusText(sim);

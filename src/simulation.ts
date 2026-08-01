@@ -184,6 +184,8 @@ export interface CavalryMarkRef {
 
 /** 单个骑兵单元的状态机：准备（蓄力，不受伤害）→ 冲锋（一次对决）→ 回到准备 */
 interface CavalryUnitState {
+  /** 单元稳定序号：阵亡 splice 后数组下标会变，随机种子必须用稳定 id */
+  id: number;
   /** 剩余蓄力回合数 */
   chargeTicks: number;
   /** 冲锋中：下一回合结算一次对决（保留一回合可见的冲锋状态） */
@@ -263,8 +265,12 @@ const RETREAT_TARGET_KILL_MULT = 0.5;
 export const KILL_MARK_TICKS = 8;
 /** 骑兵蓄力回合数：准备状态持续该回合数后发动一次冲锋 */
 export const CAVALRY_CHARGE_TICKS = 30;
-/** 骑兵对决基础胜率：冲锋成功击杀目标单元、失败则自身阵亡一个单元 */
-const CAVALRY_DUEL_CHANCE = 0.5;
+/** 骑兵对决基础胜率：配合 2 倍杀伤，单次冲锋期望交换比为正但风险高 */
+const CAVALRY_DUEL_CHANCE = 0.4;
+/** 每个骑兵单元代表的骑兵人数（历史配比约 5%~10%，默认 900 人 = 9%） */
+export const CAVALRY_PER_DOT = 25;
+/** 冲锋成功时击杀的敌方火力单元数（多倍杀伤；失败仅损失 1 个骑兵单元） */
+const CAVALRY_KILL_MULT = 2;
 /** 士气动态波动：伤亡占比下降系数 */
 const MORALE_CAS_COEFF = 1;
 /** 士气动态波动：击杀占比上升系数 */
@@ -353,7 +359,8 @@ function distributeUnits(units: number, rows: number, cap: number): number[] {
 }
 
 /** 阵型布点（前/中/后按行排列），与绘制端共用，保证箭头与圆点对齐；
- *  前排优先铺满三排（每排点数尽量均匀），中排/后排按容量逐排排布 */
+ *  前排固定三排且每排点数尽量均匀；中排/后排按“前排单行最大点数”同宽切行，
+ *  避免整排点数远超前排导致显示宽度不一致 */
 export function formationRows(
   front: number,
   middle: number,
@@ -375,15 +382,17 @@ export function formationRows(
     if (count > 0) rows.push({ row: r, echelon: "front", count });
     r++;
   }
-  const middleRows = Math.max(0, Math.ceil(middleUnits / cap));
+  // 中排/后排与前排同宽：没有前排时退回战场宽度容量
+  const rowCap = frontCounts.length > 0 ? Math.max(...frontCounts) : cap;
+  const middleRows = Math.max(0, Math.ceil(middleUnits / rowCap));
   for (let k = 0; k < middleRows; k++) {
-    const count = Math.min(cap, Math.max(0, middleUnits - k * cap));
+    const count = Math.min(rowCap, Math.max(0, middleUnits - k * rowCap));
     if (count > 0) rows.push({ row: r, echelon: "middle", count });
     r++;
   }
-  const rearRows = Math.max(0, Math.ceil(rearUnits / cap));
+  const rearRows = Math.max(0, Math.ceil(rearUnits / rowCap));
   for (let k = 0; k < rearRows; k++) {
-    const count = Math.min(cap, Math.max(0, rearUnits - k * cap));
+    const count = Math.min(rowCap, Math.max(0, rearUnits - k * rowCap));
     if (count > 0) rows.push({ row: r, echelon: "rear", count });
     r++;
   }
@@ -395,9 +404,9 @@ export function gunIconCount(guns: number): number {
   return Math.min(8, Math.max(1, Math.round(guns / 10)));
 }
 
-/** 骑兵图标数量（最多 8 个），与绘制端共用 */
+/** 骑兵图标数量（最多 8 个）：每 5 个单元 1 个图标，随配置数量递增 */
 export function cavalryIconCount(cavalry: number): number {
-  return Math.min(8, Math.max(1, Math.round(cavalry / 10)));
+  return Math.min(8, Math.max(1, Math.ceil(cavalry / 5)));
 }
 
 /** 确定性伪随机（按轮次种子），保证同一轮内箭头不闪烁 */
@@ -559,7 +568,7 @@ export class Simulation {
           redEchelon,
           config.rowWidth,
           config.redArtillery[i] ?? 0,
-          config.redCavalry[i] ?? 0,
+          (config.redCavalry ?? [])[i] ?? 0,
         ),
     );
     this.blueWings = this.blueWingInitial.map(
@@ -569,7 +578,7 @@ export class Simulation {
           blueEchelon,
           config.rowWidth,
           config.blueArtillery[i] ?? 0,
-          config.blueCavalry[i] ?? 0,
+          (config.blueCavalry ?? [])[i] ?? 0,
         ),
     );
 
@@ -598,13 +607,18 @@ export class Simulation {
     this.redFrontSlotCap = [...this.redWingFrontInitial];
     this.blueFrontSlotCap = [...this.blueWingFrontInitial];
     // 骑兵状态机：所有单元从满蓄力开始（同步首轮冲锋）
+    let cavalryId = 0;
     const initCavalry = (counts: number[]): CavalryUnitState[][] =>
-      counts.map((count) =>
-        Array.from({ length: Math.max(0, Math.round(count)) }, () => ({
-          chargeTicks: CAVALRY_CHARGE_TICKS,
-          attacking: false,
-          target: null,
-        })),
+      [0, 1, 2].map((i) =>
+        Array.from(
+          { length: Math.max(0, Math.round(counts[i] ?? 0)) },
+          () => ({
+            id: cavalryId++,
+            chargeTicks: CAVALRY_CHARGE_TICKS,
+            attacking: false,
+            target: null,
+          }),
+        ),
       );
     this.cavalryUnits = {
       red: initCavalry(config.redCavalry ?? []),
@@ -1296,6 +1310,8 @@ export class Simulation {
    * 失败则自身阵亡一个单元、目标无损，随后回到准备状态重新蓄力。
    */
   private settleCavalry(dt: number, noise: Noise): void {
+    // 少量对决用全战场共享的随机流：避免红蓝各自种子在小样本下产生系统性偏差
+    const duelRng = mulberry32(this.tick * 7331 + 500);
     for (const side of ["red", "blue"] as const) {
       for (let i = 0; i < WING_COUNT; i++) {
         // 溃退/撤退中的翼不会主动冲锋
@@ -1310,7 +1326,7 @@ export class Simulation {
         while (idx < units.length) {
           const unit = units[idx];
           if (unit.attacking) {
-            this.resolveCavalryDuel(side, i, idx, unit, noise);
+            this.resolveCavalryDuel(side, i, idx, unit, noise, duelRng);
             if (unit.attacking) {
               // 阵亡：单元已被移除，idx 保持原位继续下一个
               continue;
@@ -1324,7 +1340,7 @@ export class Simulation {
             if (unit.chargeTicks <= 0) {
               // 蓄满：进入冲锋状态并锁定目标（下一回合结算，冲锋状态可见一回合）
               unit.attacking = true;
-              unit.target = this.pickCavalryTarget(side, i, idx);
+              unit.target = this.pickCavalryTarget(side, i, unit);
             }
             idx++;
           }
@@ -1333,20 +1349,26 @@ export class Simulation {
     }
   }
 
-  /** 选择一个骑兵冲锋目标：当面敌翼优先，翼灭后按侧击规则转移 */
+  /** 骑兵冲锋候选目标：当面敌翼优先，翼灭后按侧击规则转移 */
+  private cavalryTargetCandidates(
+    side: "red" | "blue",
+    wingIndex: number,
+  ): DotRef[] {
+    const enemySide = side === "red" ? "blue" : "red";
+    const targetWings = this.fireTargets(side, wingIndex);
+    return targetWings.flatMap((j) => this.attackableDots(enemySide, j));
+  }
+
+  /** 选择一个骑兵冲锋目标（渲染箭头与主目标用） */
   private pickCavalryTarget(
     side: "red" | "blue",
     wingIndex: number,
-    unitIndex: number,
+    unit: CavalryUnitState,
   ): DotRef | null {
-    const enemySide = side === "red" ? "blue" : "red";
-    const targetWings = this.fireTargets(side, wingIndex);
-    const candidates = targetWings.flatMap((j) =>
-      this.attackableDots(enemySide, j),
-    );
+    const candidates = this.cavalryTargetCandidates(side, wingIndex);
     if (candidates.length === 0) return null;
     const rng = mulberry32(
-      this.tick * 6133 + (side === "red" ? 700 : 800) + wingIndex * 43 + unitIndex * 97,
+      this.tick * 6133 + (side === "red" ? 700 : 800) + wingIndex * 43 + unit.id * 97,
     );
     return candidates[Math.floor(rng() * candidates.length)];
   }
@@ -1358,19 +1380,37 @@ export class Simulation {
     unitIndex: number,
     unit: CavalryUnitState,
     noise: Noise,
+    duelRng: () => number,
   ): void {
     const wing = (side === "red" ? this.redWings : this.blueWings)[wingIndex];
-    const target =
-      unit.target ?? this.pickCavalryTarget(side, wingIndex, unitIndex);
+    const candidates = this.cavalryTargetCandidates(side, wingIndex);
     // 没有可攻击目标：退回蓄力，不算对决失败
-    if (!target) return;
-    const chance = CAVALRY_DUEL_CHANCE * noise[side][wingIndex];
-    const roll = mulberry32(
-      this.tick * 7331 + (side === "red" ? 900 : 1000) + wingIndex * 53 + unitIndex * 113,
+    if (candidates.length === 0) return;
+    const target = unit.target ?? candidates[0];
+    // 主目标可能随阵型变化失效：退回候选第一个
+    const targetValid = candidates.some(
+      (c) =>
+        c.wing === target.wing && c.row === target.row && c.col === target.col,
     );
-    if (roll() < chance) {
-      // 冲锋成功：目标单元被必杀，自身无损
-      this.tryKillDot(target, 1, () => 0, side, wingIndex, "infantry");
+    const primary = targetValid ? target : candidates[0];
+    const chance = CAVALRY_DUEL_CHANCE * noise[side][wingIndex];
+    if (duelRng() < chance) {
+      // 冲锋成功：多倍杀伤——主目标必杀，再补杀其余敌方火力单元，自身无损
+      this.tryKillDot(primary, 1, () => 0, side, wingIndex, "infantry");
+      let extra = CAVALRY_KILL_MULT - 1;
+      for (const c of candidates) {
+        if (extra <= 0) break;
+        if (
+          c.wing === primary.wing &&
+          c.row === primary.row &&
+          c.col === primary.col
+        ) {
+          continue;
+        }
+        if (this.tryKillDot(c, 1, () => 0, side, wingIndex, "infantry")) {
+          extra--;
+        }
+      }
       unit.attacking = false;
     } else {
       // 对决失败：自身阵亡一个单元，目标无损失
