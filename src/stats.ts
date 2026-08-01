@@ -265,7 +265,7 @@ function drawWingCurve(
       const wings = side === "red" ? p.redWings : p.blueWings;
       const raw = wings[wing]?.[s.key] ?? 0;
       // 组织度为 0~1 比例：画在 0~100% 全高刻度上，100% 在顶部
-      const v = s.key === "org" ? (1 - raw) * yMax : raw;
+      const v = s.key === "org" ? raw * yMax : raw;
       const x = toX(p.time);
       const y = toY(v);
       if (idx === 0) ctx.moveTo(x, y);
