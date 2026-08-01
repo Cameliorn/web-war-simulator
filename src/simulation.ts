@@ -1276,10 +1276,14 @@ export class Simulation {
         this.config.damageScale *
         ARTILLERY_DAMAGE_MULT *
         targetMult;
-      // 面杀伤按前排占比折算为对目标点的击毙概率，保持与原模型聚合口径一致
+      // 面杀伤按前排占比折算为对目标点的击毙概率：
+      // 概率 = 前排应受伤害（人）÷ 每点人数（一个点代表 25/19 人），
+      // 与中排/后排直接按人扣减保持同一聚合口径
+      const frontKillChance =
+        (damage * (target.front / total)) / soldiersPerDot(dot.wing);
       const killed = this.tryKillDot(
         dot,
-        damage * (target.front / total),
+        Math.min(1, frontKillChance),
         killRng[assignment.side][assignment.wing],
         assignment.side,
         assignment.wing,
@@ -1859,9 +1863,15 @@ export class Simulation {
     const frontInitial = this.frontInitial(side, wingIndex);
     const gap = Math.max(0, frontInitial - front);
     const rearSpeedMult = REAR_SPEED_MULT[this.orders[side].rearSpeed];
+    const middleInitial =
+      (side === "red" ? this.redWingMiddleInitial : this.blueWingMiddleInitial)[
+        wingIndex
+      ];
     const rearTransfer = Math.min(
       rear,
       params.rearFillRate * rearSpeedMult * gap,
+      // 中排已满（或为 0）时不再从后排抽人，避免 applyState 截断导致兵力凭空消失
+      Math.max(0, middleInitial - state[fi + 1]),
     );
     out[mi] += rearTransfer;
     out[ri] -= rearTransfer;

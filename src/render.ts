@@ -24,7 +24,10 @@ const BLUE_SOFT = "#84a5dd";
 const BLUE_FAINT = "#b7c9e8";
 const AMBER = "#b45309";
 const ARTILLERY_COLOR = "#78716c";
-/** 战场宽度滑杆上限：绘制时把 rowWidth 线性映射到翼宽，满档横贯翼宽 */
+/** 火力单元点间距基准（像素）：默认战场宽度下的点距 */
+const DOT_SPACING = 8;
+/** 战场宽度滑杆范围（与 index.html 一致），绘制映射用 */
+const ROW_WIDTH_MIN = 500;
 const ROW_WIDTH_MAX = 20000;
 /** 溃退后撤最大位移（像素）：随溃退进度线性增大，越接近离场退得越远 */
 const ROUT_DRIFT_MAX = 22;
@@ -659,16 +662,30 @@ function formationY(
   return Math.max(lo, Math.min(hi, y));
 }
 
-/** 翼内统一的横向点间距：行长度按战场宽度线性映射到翼宽，点数多时自动压缩 */
+/**
+ * 战场宽度 → 点间距倍率：
+ * 画布宽度有限，不能把 500~20000 线性压进翼宽（默认 4500 会缩成一条窄条）。
+ * 以默认宽度为锚点：默认时保持原始观感（倍率 ≈1），越窄越紧凑、越宽越舒展，
+ * 整条滑杆都有平滑可见的变化。
+ */
+function rowWidthSpacingFactor(rowWidth: number): number {
+  const t = Math.min(
+    1,
+    Math.max(0, (rowWidth - ROW_WIDTH_MIN) / (ROW_WIDTH_MAX - ROW_WIDTH_MIN)),
+  );
+  return 0.55 + 0.9 * Math.sqrt(t);
+}
+
+/** 翼内统一的横向点间距：默认宽度保持基准点距，随战场宽度缩放，点数多时自动压缩 */
 function formationRowSpacing(
   rows: readonly FormationRow[],
   wingWidth: number,
   rowWidth: number,
 ): number {
   const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 1);
-  const span = (wingWidth - 16) * Math.min(1, rowWidth / ROW_WIDTH_MAX);
+  const baseSpacing = Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
   // 最小 2px 间距：避免极窄战场宽度下点挤成一团
-  return Math.max(2, span / maxCount);
+  return Math.max(2, baseSpacing * rowWidthSpacingFactor(rowWidth));
 }
 
 /** 溃退/撤退后撤位移：红方朝上、蓝方朝下（远离中央战线），随进度增大 */
