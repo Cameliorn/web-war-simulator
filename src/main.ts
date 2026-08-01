@@ -486,6 +486,17 @@ function toggle(): void {
 
 toggleBtn.addEventListener("click", toggle);
 resetBtn.addEventListener("click", reset);
+// 快捷键：空格 = 开始/暂停/继续，R = 重置（输入框聚焦时不触发）
+window.addEventListener("keydown", (event) => {
+  const target = event.target as HTMLElement | null;
+  if (target && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(target.tagName)) return;
+  if (event.code === "Space") {
+    event.preventDefault();
+    toggle();
+  } else if (event.key === "r" || event.key === "R") {
+    reset();
+  }
+});
 collapseBtn.addEventListener("click", () => setSidebarHidden(true));
 expandBtn.addEventListener("click", () => setSidebarHidden(false));
 commanderCollapseBtn.addEventListener("click", () => setCommanderHidden(true));

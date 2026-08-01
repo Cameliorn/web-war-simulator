@@ -644,6 +644,10 @@ function formationDotXY(
   const dir = nearY <= farY ? 1 : -1;
   const row = rows.find((r) => r.row === dot.row);
   const count = row?.count ?? 0;
+  // 行已消失（如整排被歼）：退回到翼中心，避免红叉飘到奇怪的位置
+  if (!row || count <= 0) {
+    return [centerX, formationY(nearY, farY, dir, 0, spacing, yOffset)];
+  }
   return [
     centerX +
       (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth),
