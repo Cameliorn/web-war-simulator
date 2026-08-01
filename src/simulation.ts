@@ -779,9 +779,9 @@ export class Simulation {
       batteryOrder.counterBattery === "off"
         ? false
         : batteryOrder.counterBattery === "on" || enemy.guns > 0;
-    return {
-      counterBattery: counterOn && enemy.guns > 0,
-      formations: enemyAlive
+    // 自动目标：当面翼存活时压制当面，被歼后转向其余存活翼
+    const autoFormations = (): number[] =>
+      enemyAlive
         ? [wingIndex]
         : [0, 1, 2].filter(
             (j) =>
@@ -792,7 +792,29 @@ export class Simulation {
                 enemyWings[j].rear,
                 enemyInitial[j],
               ),
-          ),
+          );
+    // 将领指定压制目标：指定敌翼存活时压制该翼，已灭则退回自动
+    let formations: number[];
+    if (batteryOrder.target !== "auto") {
+      const ordered = batteryOrder.target as number;
+      if (
+        this.isAlive(
+          enemyWings[ordered].front,
+          enemyWings[ordered].middle,
+          enemyWings[ordered].rear,
+          enemyInitial[ordered],
+        )
+      ) {
+        formations = [ordered];
+      } else {
+        formations = autoFormations();
+      }
+    } else {
+      formations = autoFormations();
+    }
+    return {
+      counterBattery: counterOn && enemy.guns > 0,
+      formations,
     };
   }
 

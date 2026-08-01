@@ -148,13 +148,21 @@ export function drawBattlefield(
     );
 
     // 火炮阵地：部署在本翼后方
-    drawWingBattery(ctx, cx, redWing.guns, RED_COLOR, batteryY("red", height));
+    drawWingBattery(
+      ctx,
+      cx,
+      redWing.guns,
+      RED_COLOR,
+      batteryY("red", height, routDrift(sim, "red", i)),
+      routFade(sim, "red", i),
+    );
     drawWingBattery(
       ctx,
       cx,
       blueWing.guns,
       BLUE_COLOR,
-      batteryY("blue", height),
+      batteryY("blue", height, routDrift(sim, "blue", i)),
+      routFade(sim, "blue", i),
     );
 
     // 骑兵阵地：位于步兵阵型与火炮之间（三角图标，冲锋时实心高亮）
@@ -178,9 +186,17 @@ export function drawBattlefield(
       redWing.cavalry,
       "red",
       RED_COLOR,
-      cavalryY("red", height, redRows, centerY - gap, 52),
+      cavalryY(
+        "red",
+        height,
+        redRows,
+        centerY - gap,
+        52,
+        routDrift(sim, "red", i),
+      ),
       cavalryAttackingIcons(sim, "red", i),
       sim.getCavalryProgress("red", i),
+      routFade(sim, "red", i),
     );
     drawWingCavalry(
       ctx,
@@ -188,9 +204,17 @@ export function drawBattlefield(
       blueWing.cavalry,
       "blue",
       BLUE_COLOR,
-      cavalryY("blue", height, blueRows, centerY + gap, height - 70),
+      cavalryY(
+        "blue",
+        height,
+        blueRows,
+        centerY + gap,
+        height - 70,
+        routDrift(sim, "blue", i),
+      ),
       cavalryAttackingIcons(sim, "blue", i),
       sim.getCavalryProgress("blue", i),
+      routFade(sim, "blue", i),
     );
 
     // 平直队列：红方前排朝下（靠近中央战线），蓝方前排朝上
@@ -369,12 +393,15 @@ function drawWingBattery(
   guns: number,
   color: string,
   y: number,
+  alpha = 1,
 ): void {
   if (guns <= 0) return;
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
   for (const x of batteryIconXs(centerX, guns)) {
     ctx.fillRect(x, y, 4, 4);
   }
+  ctx.globalAlpha = 1;
 }
 
 /** 火炮图标横坐标（与画出的方块一致） */
@@ -398,8 +425,12 @@ function formationBounds(
 }
 
 /** 炮兵阵地纵坐标：红方文字簇之下、蓝方文字簇之上 */
-function batteryY(side: "red" | "blue", height: number): number {
-  return side === "red" ? 26 : height - 36;
+function batteryY(
+  side: "red" | "blue",
+  height: number,
+  drift = 0,
+): number {
+  return (side === "red" ? 26 : height - 36) + drift;
 }
 
 /** 骑兵图标横坐标（与画出的三角一致） */
@@ -417,6 +448,7 @@ function cavalryY(
   rows: readonly FormationRow[],
   nearY: number,
   farY: number,
+  drift = 0,
 ): number {
   const totalRows = Math.max(1, rows.length);
   const space = Math.abs(farY - nearY);
@@ -425,7 +457,7 @@ function cavalryY(
   const dir = nearY <= farY ? 1 : -1;
   const last = rows[rows.length - 1];
   const rearY = last ? nearY + dir * last.row * spacing : nearY;
-  return (batteryY(side, height) + rearY) / 2;
+  return (batteryY(side, height) + rearY) / 2 + drift;
 }
 
 /** 骑兵图标：指向敌方的一排三角；蓄力为空心，冲锋为实心高亮 */
@@ -438,6 +470,7 @@ function drawWingCavalry(
   y: number,
   attackingIcons: ReadonlySet<number>,
   progress: number,
+  alpha = 1,
 ): void {
   if (cavalry <= 0) return;
   const xs = cavalryIconXs(centerX, cavalry);
@@ -453,20 +486,20 @@ function drawWingCavalry(
     ctx.lineTo(x - r, y - dir * r * 0.7);
     ctx.closePath();
     if (attacking) {
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = color;
       ctx.fill();
       ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.lineWidth = 1.6;
       ctx.stroke();
     } else {
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = 0.85 * alpha;
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.4;
       ctx.stroke();
       // 蓄力进度：三角形内部随进度逐渐填充，满格时几乎实心
       if (progress > 0.05) {
-        ctx.globalAlpha = 0.85 * progress;
+        ctx.globalAlpha = 0.85 * progress * alpha;
         ctx.fillStyle = color;
         ctx.fill();
       }
@@ -602,7 +635,11 @@ function attackTargetXY(
     const centerX = wingMargin + wingWidth * (target.wing + 0.5);
     const x =
       batteryIconXs(centerX, wings[target.wing].guns)[target.icon] ?? centerX;
-    const y = batteryY(target.side, height);
+    const y = batteryY(
+      target.side,
+      height,
+      routDrift(sim, target.side, target.wing),
+    );
     return [x, y];
   }
   const dot = target.dot;
@@ -717,7 +754,7 @@ function drawArtilleryArrows(
       if (guns <= 0) continue;
       const centerX = wingMargin + wingWidth * (i + 0.5);
       const xs = batteryIconXs(centerX, guns);
-      const y = batteryY(side, height);
+      const y = batteryY(side, height, routDrift(sim, side, i));
 
       for (const assignment of byWing.get(`${side}-${i}`) ?? []) {
         const targetRouting =
@@ -839,7 +876,11 @@ function drawKillLines(
     const wings = assignment.side === "red" ? sim.redWings : sim.blueWings;
     const centerX = wingMargin + wingWidth * (assignment.wing + 0.5);
     const xs = batteryIconXs(centerX, wings[assignment.wing].guns);
-    const y = batteryY(assignment.side, height);
+    const y = batteryY(
+      assignment.side,
+      height,
+      routDrift(sim, assignment.side, assignment.wing),
+    );
     const [tx, ty] = attackTargetXY(assignment.target, width, height, sim);
     // 击杀实线同样带面杀伤冲击圈
     drawArtilleryBlast(ctx, tx, ty);
@@ -890,7 +931,14 @@ function drawCavalryArrows(
       charge.wing,
       sim.config.rowWidth,
     );
-    const sy = cavalryY(charge.side, height, rows, nearY, farY);
+    const sy = cavalryY(
+      charge.side,
+      height,
+      rows,
+      nearY,
+      farY,
+      routDrift(sim, charge.side, charge.wing),
+    );
     const [tx, ty] = attackTargetXY(
       { kind: "dot", dot: charge.target },
       width,
@@ -968,7 +1016,7 @@ function drawKillMarks(
   for (const mark of sim.getKilledBatteryIcons()) {
     const centerX = wingMargin + wingWidth * (mark.wing + 0.5);
     const x = batteryIconXs(centerX, mark.count)[mark.icon] ?? centerX;
-    const y = batteryY(mark.side, height);
+    const y = batteryY(mark.side, height, routDrift(sim, mark.side, mark.wing));
     drawKillMark(ctx, x, y);
   }
   // 被消灭的骑兵图标也标红叉（按图标死亡时的总数复原坐标）
@@ -985,7 +1033,14 @@ function drawKillMarks(
       mark.wing,
       sim.config.rowWidth,
     );
-    const y = cavalryY(mark.side, height, rows, nearY, farY);
+    const y = cavalryY(
+      mark.side,
+      height,
+      rows,
+      nearY,
+      farY,
+      routDrift(sim, mark.side, mark.wing),
+    );
     drawKillMark(ctx, x, y);
   }
 }
