@@ -1,5 +1,6 @@
 import "./style.css";
-import { drawChart, setupCanvas } from "./render";
+import { drawChart } from "./chart";
+import { setupCanvas } from "./canvas";
 import {
   CAVALRY_PER_DOT,
   ROUT_RATIO,

@@ -53,14 +53,19 @@ npm run dev
 
 ```text
 web-war-simulator/
-├── index.html          # 页面骨架与控制面板
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── main.ts         # 入口：UI 绑定、参数读取、主循环
-    ├── simulation.ts   # 兰彻斯特方程模拟核心（RK4 积分）
-    ├── render.ts       # Canvas 战场态势与兵力曲线绘制
-    └── style.css       # 界面样式
+    ├── index.html          # 页面骨架与控制面板
+    ├── package.json
+    ├── tsconfig.json
+    └── src/
+        ├── main.ts         # 入口：UI 绑定、参数读取、主循环
+        ├── simulation.ts   # 兰彻斯特方程模拟核心（RK4 积分）
+        ├── layout.ts       # 纯布局：布点/容量/图标换算（模拟与渲染共用）
+        ├── battlefield.ts  # Canvas 战场态势绘制
+        ├── chart.ts        # 统计页兵力曲线绘制
+        ├── canvas.ts       # 画布初始化
+        ├── theme.ts        # 渲染主题常量
+        ├── shared.ts       # 跨页共享常量（存储键/翼名/红蓝颜色）
+        └── style.css       # 界面样式
 ```
 
 ## 后续可扩展方向

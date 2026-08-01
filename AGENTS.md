@@ -18,7 +18,11 @@
 
 - [src/main.ts](src/main.ts) — 战斗页入口：DOM 绑定、参数读取、主循环、统计保存
 - [src/simulation.ts](src/simulation.ts) — 模拟核心（最大最核心）：纯逻辑、无 DOM，导出所有类型与 `Simulation` 类
-- [src/render.ts](src/render.ts) — Canvas 绘制：战场态势（`drawBattlefield`）与统计页曲线（`drawChart`）
+- [src/layout.ts](src/layout.ts) — 纯布局层：每点人数、每排容量、阵型布点、火炮/骑兵图标换算（模拟与渲染共用）
+- [src/battlefield.ts](src/battlefield.ts) — 战场态势 Canvas 绘制（`drawBattlefield` 及箭头/红叉/骑兵/火炮等）
+- [src/chart.ts](src/chart.ts) — 统计页兵力曲线（`drawChart`）
+- [src/canvas.ts](src/canvas.ts) — 画布初始化（devicePixelRatio 缩放）
+- [src/theme.ts](src/theme.ts) — 渲染主题常量（颜色/字体）
 - [src/stats.ts](src/stats.ts) — 统计页入口，通过 localStorage 读取战斗数据
 - [src/style.css](src/style.css) — 两页共用样式（CSS 变量主题）
 
@@ -47,7 +51,7 @@
 - 随机性为 0 时攻击分配/击杀判定是**确定性的**（mulberry32 种子 = 回合数 × 质数）。改动种子常量会改变整场战斗走向。
 
 ### render 与 simulation 的耦合（最危险）
-- render.ts 与 simulation.ts **共享同一套布点函数** `formationRows` / `rowCapacity` / `gunIconCount`（由 simulation.ts 导出）。箭头起点、圆点位置、击杀槽位映射全部依赖这套布局。**改动这三个函数任何一处，会导致箭头错位、击杀落空**（`tryKillDot` 在布局中找不到 `(row,col)` 会直接 return false）。
+- simulation.ts 与 battlefield.ts **共享同一套布点函数** `formationRows` / `rowCapacity` / `gunIconCount` / `cavalryIconCount`（统一由 src/layout.ts 导出）。箭头起点、圆点位置、击杀槽位映射全部依赖这套布局。**改动这些函数任何一处，会导致箭头错位、击杀落空**（`tryKillDot` 在布局中找不到 `(row,col)` 会直接 return false）。
 - 攻击分配有共享缓存：`getFireAssignments()` / `getGunAssignments()` 触发 `ensureAssignmentsCached`，显示与结算共用同一份。**修改 `sim.orders` 后必须调用 `sim.invalidateAssignments()`**，否则暂停时箭头不更新。
 
 ### 关键不变量（模拟正确性）

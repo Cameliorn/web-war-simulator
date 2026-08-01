@@ -11,7 +11,8 @@ import {
   type ReinforceChoice,
   type TargetChoice,
 } from "./simulation";
-import { drawBattlefield, setupCanvas } from "./render";
+import { drawBattlefield } from "./battlefield";
+import { setupCanvas } from "./canvas";
 import { STORAGE_KEY } from "./shared";
 
 const BATTLEFIELD_BASE = { w: 760, h: 360 };
