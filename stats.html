@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>战争模拟器 · 战斗统计</title>
+  </head>
+  <body>
+    <main id="stats-app">
+      <header>
+        <h1>战斗统计</h1>
+        <p>战争模拟器 · 战后数据总览（与战斗页实时同步）</p>
+        <a id="back-btn" href="index.html">‹ 返回战斗</a>
+      </header>
+      <div id="stats-empty">暂无统计数据——请先在主页面完成一场战斗，再点击“查看统计”。</div>
+      <section id="stats-summary" hidden>
+        <div class="stat-card"><span>胜方</span><b id="stat-winner"></b></div>
+        <div class="stat-card"><span>回合数</span><b id="stat-time"></b></div>
+        <div class="stat-card"><span>红方剩余</span><b id="stat-red-total"></b></div>
+        <div class="stat-card"><span>蓝方剩余</span><b id="stat-blue-total"></b></div>
+        <div class="stat-card"><span>红方击杀</span><b id="stat-red-kills"></b></div>
+        <div class="stat-card"><span>蓝方击杀</span><b id="stat-blue-kills"></b></div>
+      </section>
+      <section id="stats-config" hidden>
+        <h2>战斗参数</h2>
+        <dl id="config-list"></dl>
+      </section>
+      <section id="stats-chart" hidden>
+        <h2>兵力曲线（前 / 中 / 后）</h2>
+        <canvas id="chart"></canvas>
+      </section>
+      <section id="stats-kills" hidden>
+        <h2>击杀与战损（按翼 / 兵种）</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>单位</th>
+              <th>初始兵力</th>
+              <th>剩余兵力</th>
+              <th>战损</th>
+              <th>士兵击杀</th>
+              <th>火炮击杀</th>
+              <th>剩余火炮</th>
+              <th>火炮损失</th>
+              <th>组织度</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="kill-table-body"></tbody>
+        </table>
+      </section>
+      <section id="stats-wings" hidden>
+        <h2>各翼兵力与组织度（前实线 / 中虚线 / 后点线 / 组织度灰线）</h2>
+        <div id="wing-charts"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/stats.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>战争模拟器</title>
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1>战争模拟器</h1>
+        <p>基于兰彻斯特方程的近现代战斗模拟</p>
+        <button id="expand-btn" type="button">参数 ›</button>
+        <div id="header-actions-right">
+          <button id="commander-expand-btn" type="button">将领 ‹</button>
+          <a id="stats-btn" href="stats.html" target="_blank" rel="noopener">查看统计 ›</a>
+        </div>
+      </header>
+      <div id="layout">
+        <aside id="panel">
+          <div id="panel-head">
+            <h2>参数</h2>
+            <button id="collapse-btn" type="button" aria-label="收起参数">‹</button>
+          </div>
+          <div id="panel-grid">
+            <section class="panel-card">
+              <h2>初始兵力</h2>
+              <label class="ctl">
+                <span>红方总兵力</span>
+                <span class="range-row">
+                  <input id="red-initial" type="range" min="100" max="3000" step="50" value="1200" />
+                  <output id="red-initial-out">1200</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>蓝方总兵力</span>
+                <span class="range-row">
+                  <input id="blue-initial" type="range" min="100" max="3000" step="50" value="800" />
+                  <output id="blue-initial-out">800</output>
+                </span>
+              </label>
+            </section>
+            <section class="panel-card">
+              <h2>作战效率</h2>
+              <label class="ctl">
+                <span>红方 α</span>
+                <span class="range-row">
+                  <input id="red-eff" type="range" min="0.01" max="0.10" step="0.005" value="0.04" />
+                  <output id="red-eff-out">0.04</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>蓝方 β</span>
+                <span class="range-row">
+                  <input id="blue-eff" type="range" min="0.01" max="0.10" step="0.005" value="0.05" />
+                  <output id="blue-eff-out">0.05</output>
+                </span>
+              </label>
+            </section>
+            <section class="panel-card panel-card-wide">
+              <h2>翼部署（左 / 中 / 右）</h2>
+              <div class="deploy-grid">
+                <label class="ctl">
+                  <span>红方·左翼占比</span>
+                  <span class="range-row">
+                    <input id="red-deploy-0" type="range" min="0" max="100" step="1" value="33" />
+                    <output id="red-deploy-0-out">33%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·左翼占比</span>
+                  <span class="range-row">
+                    <input id="blue-deploy-0" type="range" min="0" max="100" step="1" value="33" />
+                    <output id="blue-deploy-0-out">33%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·中军占比</span>
+                  <span class="range-row">
+                    <input id="red-deploy-1" type="range" min="0" max="100" step="1" value="34" />
+                    <output id="red-deploy-1-out">34%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·中军占比</span>
+                  <span class="range-row">
+                    <input id="blue-deploy-1" type="range" min="0" max="100" step="1" value="34" />
+                    <output id="blue-deploy-1-out">34%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·右翼占比</span>
+                  <span class="range-row">
+                    <input id="red-deploy-2" type="range" min="0" max="100" step="1" value="33" />
+                    <output id="red-deploy-2-out">33%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·右翼占比</span>
+                  <span class="range-row">
+                    <input id="blue-deploy-2" type="range" min="0" max="100" step="1" value="33" />
+                    <output id="blue-deploy-2-out">33%</output>
+                  </span>
+                </label>
+              </div>
+            </section>
+            <section class="panel-card panel-card-wide">
+              <h2>战斗参数</h2>
+              <label class="ctl">
+                <span>战斗随机性</span>
+                <span class="range-row">
+                  <input id="randomness" type="range" min="0" max="1" step="0.05" value="0.15" />
+                  <output id="randomness-out">0.15</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>次 / 秒</span>
+                <span class="range-row">
+                  <input id="speed" type="range" min="0.1" max="20" step="0.01" value="2" />
+                  <output id="speed-out">2</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>伤害水平</span>
+                <span class="range-row">
+                  <input id="damage-scale" type="range" min="0.005" max="1" step="0.005" value="0.02" />
+                  <output id="damage-scale-out">×0.02</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>红方士气</span>
+                <span class="range-row">
+                  <input id="red-morale" type="range" min="0.5" max="2" step="0.05" value="1" />
+                  <output id="red-morale-out">1.00</output>
+                </span>
+              </label>
+              <label class="ctl">
+                <span>蓝方士气</span>
+                <span class="range-row">
+                  <input id="blue-morale" type="range" min="0.5" max="2" step="0.05" value="1" />
+                  <output id="blue-morale-out">1.00</output>
+                </span>
+              </label>
+            </section>
+            <section class="panel-card panel-card-wide">
+              <h2>梯队配置（前 / 中 / 后）</h2>
+              <div class="label-grid">
+                <label class="ctl">
+                  <span>红方·前排占比</span>
+                  <span class="range-row">
+                    <input id="red-echelon-0" type="range" min="0" max="100" step="5" value="20" />
+                    <output id="red-echelon-0-out">20%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·前排占比</span>
+                  <span class="range-row">
+                    <input id="blue-echelon-0" type="range" min="0" max="100" step="5" value="20" />
+                    <output id="blue-echelon-0-out">20%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·中排占比</span>
+                  <span class="range-row">
+                    <input id="red-echelon-1" type="range" min="0" max="100" step="5" value="15" />
+                    <output id="red-echelon-1-out">15%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·中排占比</span>
+                  <span class="range-row">
+                    <input id="blue-echelon-1" type="range" min="0" max="100" step="5" value="15" />
+                    <output id="blue-echelon-1-out">15%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·后排占比</span>
+                  <span class="range-row">
+                    <input id="red-echelon-2" type="range" min="0" max="100" step="5" value="65" />
+                    <output id="red-echelon-2-out">65%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·后排占比</span>
+                  <span class="range-row">
+                    <input id="blue-echelon-2" type="range" min="0" max="100" step="5" value="65" />
+                    <output id="blue-echelon-2-out">65%</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>后排支援速度</span>
+                  <span class="range-row">
+                    <input id="rear-fill-rate" type="range" min="0" max="0.2" step="0.01" value="0.05" />
+                    <output id="rear-fill-rate-out">0.05</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>战场宽度（每排人数）</span>
+                  <span class="range-row">
+                    <input id="row-width" type="range" min="30" max="300" step="10" value="90" />
+                    <output id="row-width-out">90</output>
+                  </span>
+                </label>
+              </div>
+            </section>
+            <section class="panel-card panel-card-wide">
+              <h2>远程集团（按翼部署）</h2>
+              <div class="label-grid">
+                <label class="ctl">
+                  <span>红方·左翼</span>
+                  <span class="range-row">
+                    <input id="red-artillery-0" type="range" min="0" max="150" step="5" value="20" />
+                    <output id="red-artillery-0-out">20</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·左翼</span>
+                  <span class="range-row">
+                    <input id="blue-artillery-0" type="range" min="0" max="150" step="5" value="20" />
+                    <output id="blue-artillery-0-out">20</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·中军</span>
+                  <span class="range-row">
+                    <input id="red-artillery-1" type="range" min="0" max="150" step="5" value="15" />
+                    <output id="red-artillery-1-out">15</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·中军</span>
+                  <span class="range-row">
+                    <input id="blue-artillery-1" type="range" min="0" max="150" step="5" value="15" />
+                    <output id="blue-artillery-1-out">15</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·右翼</span>
+                  <span class="range-row">
+                    <input id="red-artillery-2" type="range" min="0" max="150" step="5" value="15" />
+                    <output id="red-artillery-2-out">15</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·右翼</span>
+                  <span class="range-row">
+                    <input id="blue-artillery-2" type="range" min="0" max="150" step="5" value="15" />
+                    <output id="blue-artillery-2-out">15</output>
+                  </span>
+                </label>
+              </div>
+            </section>
+            <div id="actions">
+              <button id="toggle-btn" type="button">开始模拟</button>
+              <button id="reset-btn" type="button">重置</button>
+            </div>
+          </div>
+        </aside>
+        <section id="stage">
+          <div id="hud">
+            <span id="red-hud">红方 前 240 · 中 30 · 后 930 · 火炮 50</span>
+            <span id="blue-hud">蓝方 前 160 · 中 110 · 后 530 · 火炮 50</span>
+            <span id="time-hud">第 0.0 次</span>
+            <span id="status-hud">未开始</span>
+          </div>
+          <figure>
+            <canvas id="battlefield"></canvas>
+            <figcaption>图 1 · 战场态势</figcaption>
+          </figure>
+        </section>
+        <aside id="commander">
+          <div id="commander-head">
+            <h2>将领决策</h2>
+            <button id="commander-collapse-btn" type="button" aria-label="收起将领">›</button>
+          </div>
+          <p id="commander-hint">战斗开始后由将领决策，可实时调整</p>
+          <section class="cmd-side">
+            <h3>红方将领</h3>
+            <label class="cmd-select">
+              后排投入
+              <select id="red-rear-speed">
+                <option value="slow">慢速</option>
+                <option value="medium">中速</option>
+                <option value="fast">快速</option>
+              </select>
+            </label>
+            <details class="cmd-node">
+              <summary>左翼</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="red-wing-0-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="red-wing-0-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="red-wing-0-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>中军</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="red-wing-1-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="red-wing-1-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="red-wing-1-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>右翼</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="red-wing-2-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="red-wing-2-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="red-wing-2-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>左翼炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="red-batt-0-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="red-batt-0-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>中军炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="red-batt-1-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="red-batt-1-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>右翼炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="red-batt-2-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="red-batt-2-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+          </section>
+          <section class="cmd-side">
+            <h3>蓝方将领</h3>
+            <label class="cmd-select">
+              后排投入
+              <select id="blue-rear-speed">
+                <option value="slow">慢速</option>
+                <option value="medium">中速</option>
+                <option value="fast">快速</option>
+              </select>
+            </label>
+            <details class="cmd-node">
+              <summary>左翼</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="blue-wing-0-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="blue-wing-0-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="blue-wing-0-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>中军</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="blue-wing-1-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="blue-wing-1-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="blue-wing-1-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>右翼</summary>
+              <label class="cmd-select">
+                打击目标
+                <select id="blue-wing-2-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                人员调度
+                <select id="blue-wing-2-reinforce">
+                  <option value="hold">固守</option>
+                  <option value="0">支援左翼</option>
+                  <option value="1">支援中军</option>
+                  <option value="2">支援右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                撤退决策
+                <select id="blue-wing-2-retreat">
+                  <option value="hold">固守</option>
+                  <option value="retreat">主动撤退</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>左翼炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="blue-batt-0-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="blue-batt-0-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>中军炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="blue-batt-1-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="blue-batt-1-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+            <details class="cmd-node">
+              <summary>右翼炮</summary>
+              <label class="cmd-select">
+                压制目标
+                <select id="blue-batt-2-target">
+                  <option value="auto">自动</option>
+                  <option value="0">敌左翼</option>
+                  <option value="1">敌中军</option>
+                  <option value="2">敌右翼</option>
+                </select>
+              </label>
+              <label class="cmd-select">
+                反炮
+                <select id="blue-batt-2-counter">
+                  <option value="auto">自动</option>
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+            </details>
+          </section>
+        </aside>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
