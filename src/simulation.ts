@@ -995,6 +995,19 @@ export class Simulation {
     }));
   }
 
+  /** 骑兵蓄力进度（0~1，供渲染端显示准备状态）：所有单元同步蓄力，取平均值 */
+  getCavalryProgress(side: "red" | "blue", wingIndex: number): number {
+    const units = this.cavalryUnits[side][wingIndex];
+    if (units.length === 0) return 0;
+    let sum = 0;
+    for (const unit of units) {
+      sum += unit.attacking
+        ? 1
+        : 1 - unit.chargeTicks / CAVALRY_CHARGE_TICKS;
+    }
+    return sum / units.length;
+  }
+
   /** 每个整回合只计算一次攻击分配（显示与结算共用同一份） */
   private ensureAssignmentsCached(planTick: number): void {
     if (
@@ -1640,7 +1653,9 @@ export class Simulation {
         if (remaining > 0) {
           // 减员：溃退为追杀式大量减员，有序撤退减员显著更低
           this.applyRoutAttrition(side, i);
-          if (total <= totalRout) {
+          // 减员后重新取总兵力，避免最后一批溃兵被判定为“逃逸”而非“溃败”
+          const totalAfter = wing.front + wing.middle + wing.rear;
+          if (totalAfter <= totalRout) {
             // 离场途中被全歼
             this.zeroWing(side, i, slots);
             this.outcomes[side][i] = "destroyed";

@@ -200,6 +200,7 @@ export function drawBattlefield(
       RED_COLOR,
       cavalryY("red", height, redRows, centerY - gap, 52),
       cavalryAttackingIcons(sim, "red", i),
+      sim.getCavalryProgress("red", i),
     );
     drawWingCavalry(
       ctx,
@@ -209,6 +210,7 @@ export function drawBattlefield(
       BLUE_COLOR,
       cavalryY("blue", height, blueRows, centerY + gap, height - 70),
       cavalryAttackingIcons(sim, "blue", i),
+      sim.getCavalryProgress("blue", i),
     );
 
     // 平直队列：红方前排朝下（靠近中央战线），蓝方前排朝上
@@ -566,6 +568,7 @@ function drawWingCavalry(
   color: string,
   y: number,
   attackingIcons: ReadonlySet<number>,
+  progress: number,
 ): void {
   if (cavalry <= 0) return;
   const xs = cavalryIconXs(centerX, cavalry);
@@ -592,6 +595,12 @@ function drawWingCavalry(
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.4;
       ctx.stroke();
+      // 蓄力进度：三角形内部随进度逐渐填充，满格时几乎实心
+      if (progress > 0.05) {
+        ctx.globalAlpha = 0.85 * progress;
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
     }
   }
   ctx.globalAlpha = 1;
