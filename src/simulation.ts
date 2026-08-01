@@ -271,41 +271,69 @@ function normalizeEchelon(echelon: [number, number, number]): [number, number, n
   return [echelon[0] / sum, echelon[1] / sum, echelon[2] / sum];
 }
 
-/** 每排容量：一排最多站多少人（与绘制端共用） */
-export function rowCapacity(rowWidth: number): number {
-  return Math.max(1, Math.round(rowWidth / 3));
+/** 中军每排最多火力单元数（视觉点数上限，与绘制端共用） */
+export const ROW_DOT_CAP = 30;
+/** 火力单元射击间隔（回合）：千回合约 70 发，每个点并非每回合射击 */
+const FIRE_INTERVAL = 14;
+/** 每个点代表的士兵数：中军 25 人（每排约 30 点）、两翼 19 人（每排恰好 10 点） */
+function soldiersPerDot(wing: number): number {
+  return wing === 1 ? 25 : 19;
 }
 
-/** 阵型布点（前/中/后按行排列），与绘制端共用，保证箭头与圆点对齐 */
+/** 每排容量：中军每排 30 个火力单元、两翼每排 10 个（与绘制端共用） */
+export function rowCapacity(wing: number): number {
+  return wing === 1 ? ROW_DOT_CAP : 10;
+}
+
+/** 把若干火力单元尽量均匀地分布到固定行数（前排固定三排） */
+function distributeUnits(units: number, rows: number, cap: number): number[] {
+  const counts: number[] = [];
+  let remaining = units;
+  for (let row = 0; row < rows; row++) {
+    if (remaining <= 0) {
+      counts.push(0);
+      continue;
+    }
+    const left = rows - row;
+    counts.push(Math.min(cap, Math.ceil(remaining / left)));
+    remaining -= counts[counts.length - 1];
+  }
+  return counts;
+}
+
+/** 阵型布点（前/中/后按行排列），与绘制端共用，保证箭头与圆点对齐；
+ *  前排优先铺满三排（每排点数尽量均匀），中排/后排按容量逐排排布 */
 export function formationRows(
   front: number,
   middle: number,
   rear: number,
-  rowWidth: number,
+  wing: number,
 ): FormationRow[] {
-  const cap = rowCapacity(rowWidth);
-  const frontRows = Math.max(0, Math.ceil(front / cap));
-  const middleRows = Math.max(0, Math.ceil(middle / cap));
-  const rearRows = Math.max(0, Math.ceil(rear / cap));
-  const totalRows = Math.max(1, frontRows + middleRows + rearRows);
+  const cap = rowCapacity(wing);
+  const perDot = soldiersPerDot(wing);
+  const toUnits = (n: number) => Math.max(0, Math.ceil(n / perDot));
+  const frontUnits = toUnits(front);
+  const middleUnits = toUnits(middle);
+  const rearUnits = toUnits(rear);
   const rows: FormationRow[] = [];
-  for (let r = 0; r < totalRows; r++) {
-    let echelon: FormationRow["echelon"];
-    let count: number;
-    if (r < frontRows) {
-      echelon = "front";
-      count = Math.min(cap, Math.max(0, front - r * cap));
-    } else if (r < frontRows + middleRows) {
-      echelon = "middle";
-      count = Math.min(cap, Math.max(0, middle - (r - frontRows) * cap));
-    } else {
-      echelon = "rear";
-      count = Math.min(
-        cap,
-        Math.max(0, rear - (r - frontRows - middleRows) * cap),
-      );
-    }
-    if (count > 0) rows.push({ row: r, echelon, count });
+  let r = 0;
+  const frontCounts =
+    frontUnits > 0 ? distributeUnits(frontUnits, 3, cap) : [];
+  for (const count of frontCounts) {
+    if (count > 0) rows.push({ row: r, echelon: "front", count });
+    r++;
+  }
+  const middleRows = Math.max(0, Math.ceil(middleUnits / cap));
+  for (let k = 0; k < middleRows; k++) {
+    const count = Math.min(cap, Math.max(0, middleUnits - k * cap));
+    if (count > 0) rows.push({ row: r, echelon: "middle", count });
+    r++;
+  }
+  const rearRows = Math.max(0, Math.ceil(rearUnits / cap));
+  for (let k = 0; k < rearRows; k++) {
+    const count = Math.min(cap, Math.max(0, rearUnits - k * cap));
+    if (count > 0) rows.push({ row: r, echelon: "rear", count });
+    r++;
   }
   return rows;
 }
@@ -470,22 +498,23 @@ export class Simulation {
     this.redWingRearInitial = this.redWings.map((w) => w.rear);
     this.blueWingRearInitial = this.blueWings.map((w) => w.rear);
 
-    // 前排离散化为命中点：每个点 1 名士兵，点数取初始前排的整数值
+    // 前排离散化为命中点：每个点代表一个火力单元（多名士兵），点数取初始前排的单元数
     const initSlots = (
       wings: WingState[],
       frontInitial: number[],
     ): FrontSlotState[] =>
-      wings.map((wing, i) => {
-        const cap = Math.max(0, Math.round(frontInitial[i]));
-        wing.front = cap;
+      wings.map((_wing, i) => {
+        const perDot = soldiersPerDot(i);
+        const units = Math.max(0, Math.ceil(frontInitial[i] / perDot));
         return {
-          alive: Array.from({ length: cap }, () => true),
+          alive: Array.from({ length: units }, () => true),
         };
       });
     this.redSlots = initSlots(this.redWings, this.redWingFrontInitial);
     this.blueSlots = initSlots(this.blueWings, this.blueWingFrontInitial);
-    this.redFrontSlotCap = this.redSlots.map((s) => s.alive.length);
-    this.blueFrontSlotCap = this.blueSlots.map((s) => s.alive.length);
+    // 前排士兵口径上限 = 初始前排人数（clamp 与补位都按士兵计，单元仅作命中粒度）
+    this.redFrontSlotCap = [...this.redWingFrontInitial];
+    this.blueFrontSlotCap = [...this.blueWingFrontInitial];
     this.killStats = {
       red: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
       blue: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
@@ -754,7 +783,7 @@ export class Simulation {
       w.front,
       w.middle,
       w.rear,
-      this.config.rowWidth,
+      wing,
     )) {
       if (row.echelon !== echelon) continue;
       for (let c = 0; c < row.count; c++) {
@@ -846,6 +875,8 @@ export class Simulation {
         const batteryIcons = gunIconCount(enemyGuns);
 
         for (let k = 0; k < attackers.length; k++) {
+          // 射击节奏：每个火力单元每 FIRE_INTERVAL 回合射击一次（千回合约 70 发）
+          if ((planTick + k) % FIRE_INTERVAL !== 0) continue;
           let target: AttackTarget | null = null;
           const toBattery =
             battery && (k % 4 === 0 || candidates.length === 0);
@@ -960,12 +991,15 @@ export class Simulation {
               assignment.target.dot.wing,
             )
           : 1;
+      // 单发威力按射击间隔补偿：每点射击频率降为 1/间隔，但每发歼灭一个单元，
+      // 单元规模因子在「射击次数 × 单元人数」中相互抵消，聚合杀伤率与原模型一致
       const killChance =
         coeff *
         noiseVal *
         dt *
         this.config.damageScale *
-        targetMult;
+        targetMult *
+        FIRE_INTERVAL;
 
       if (assignment.target.kind === "battery") {
         const enemyWings =
@@ -1099,23 +1133,24 @@ export class Simulation {
       wing.front,
       wing.middle,
       wing.rear,
-      this.config.rowWidth,
+      dot.wing,
     );
     const rowInfo = rows.find((r) => r.row === dot.row);
     if (!rowInfo || dot.col >= rowInfo.count) return false;
     const echelon = rowInfo.echelon;
 
     if (echelon === "middle" || echelon === "rear") {
-      // 中排/后排按点结算：命中后该梯队减少 1 人
+      // 中排/后排按单元结算：命中后该梯队减少一个火力单元的兵力
       if (roll() >= probability) return false;
+      const size = soldiersPerDot(dot.wing);
       if (echelon === "middle") {
-        wing.middle = Math.max(0, wing.middle - 1);
+        wing.middle = Math.max(0, wing.middle - size);
       } else {
-        wing.rear = Math.max(0, wing.rear - 1);
+        wing.rear = Math.max(0, wing.rear - size);
       }
-      this.killStats[attackerSide][attackerWing][type] += 1;
-      this.casualties[dot.side][dot.wing] += 1;
-      this.tickCasualties[dot.side][dot.wing] += 1;
+      this.killStats[attackerSide][attackerWing][type] += size;
+      this.casualties[dot.side][dot.wing] += size;
+      this.tickCasualties[dot.side][dot.wing] += size;
       this.tickKills[attackerSide][attackerWing] += 1;
       this.killedDotHistory.push({ dot, tick: this.tick });
       return true;
@@ -1141,10 +1176,11 @@ export class Simulation {
 
     if (roll() < probability) {
       state.alive[slotIndex] = false;
-      wing.front = Math.max(0, wing.front - 1);
-      this.killStats[attackerSide][attackerWing][type] += 1;
-      this.casualties[dot.side][dot.wing] += 1;
-      this.tickCasualties[dot.side][dot.wing] += 1;
+      const size = this.slotSoldiers(dot.side, dot.wing, slotIndex);
+      wing.front = Math.max(0, wing.front - size);
+      this.killStats[attackerSide][attackerWing][type] += size;
+      this.casualties[dot.side][dot.wing] += size;
+      this.tickCasualties[dot.side][dot.wing] += size;
       this.tickKills[attackerSide][attackerWing] += 1;
       this.killedDotHistory.push({ dot, tick: this.tick });
       return true;
@@ -1164,7 +1200,7 @@ export class Simulation {
       wing.front,
       wing.middle,
       wing.rear,
-      this.config.rowWidth,
+      wingIndex,
     ).filter((r) => r.echelon === "front");
     let rank = 0;
     for (const r of rows) {
@@ -1211,7 +1247,7 @@ export class Simulation {
     }
   }
 
-  /** 中排瞬间补位：把缺员的前排命中点从补满（每个点消耗 1 名中排） */
+  /** 中排瞬间补位：把缺员的前排命中点补满（每个点消耗其对应的士兵数） */
   private refillFrontSlots(): void {
     for (const side of ["red", "blue"] as const) {
       const wings = side === "red" ? this.redWings : this.blueWings;
@@ -1221,15 +1257,29 @@ export class Simulation {
         const wing = wings[i];
         const cap = this.frontSlotCap(side, i);
         const state = slots[i];
-        while (wing.front < cap && wing.middle >= 1) {
+        while (wing.front < cap) {
           const idx = state.alive.findIndex((alive) => !alive);
           if (idx < 0) break;
+          const size = this.slotSoldiers(side, i, idx);
+          if (wing.middle < size) break;
           state.alive[idx] = true;
-          wing.middle -= 1;
-          wing.front += 1;
+          wing.middle -= size;
+          wing.front += size;
         }
       }
     }
+  }
+
+  /** 指定前排槽位代表的士兵数（最后一个槽位可能是不足整单元的余数） */
+  private slotSoldiers(
+    side: "red" | "blue",
+    wingIndex: number,
+    slotIndex: number,
+  ): number {
+    const initial = this.frontInitial(side, wingIndex);
+    const perDot = soldiersPerDot(wingIndex);
+    const units = Math.max(1, Math.ceil(initial / perDot));
+    return slotIndex === units - 1 ? initial - (units - 1) * perDot : perDot;
   }
 
   /** 离场状态机：主动撤退命令触发有序撤退（低伤亡），组织度归零触发溃退（高伤亡）；
@@ -1303,7 +1353,10 @@ export class Simulation {
     const kind = this.retreatKind[side][wingIndex];
     const rate =
       kind === "retreat" ? RETREAT_ATTRITION_RATE : ROUT_ATTRITION_RATE;
-    const kills = Math.floor(total * rate);
+    // 按火力单元粒度折算：每杀一个点代表歼灭一个单元
+    const kills = Math.floor(
+      (total * rate) / soldiersPerDot(wingIndex),
+    );
     if (kills <= 0) return;
     const rng = mulberry32(
       this.tick * 617 + (side === "red" ? 500 : 600) + wingIndex * 23,
