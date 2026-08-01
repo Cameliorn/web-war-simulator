@@ -536,6 +536,11 @@ function formationY(
   const y = nearY + dir * row * spacing + yOffset;
   const lo = Math.min(nearY, farY) + 6;
   const hi = Math.max(nearY, farY) - 6;
+  // 正常站位（无后撤位移）：第一排必须贴住 nearY，近端不能被 clamp 向内挤，
+  // 否则第一二排间距会被压缩导致重叠；只限制远端排数过多时越界。
+  if (yOffset === 0) {
+    return dir > 0 ? Math.min(y, hi) : Math.max(y, lo);
+  }
   return Math.max(lo, Math.min(hi, y));
 }
 
