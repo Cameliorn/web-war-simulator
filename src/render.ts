@@ -24,8 +24,8 @@ const BLUE_SOFT = "#84a5dd";
 const BLUE_FAINT = "#b7c9e8";
 const AMBER = "#b45309";
 const ARTILLERY_COLOR = "#78716c";
-/** 火力单元点间距上限：行点少时保持 8px，行点过多时按翼宽压缩 */
-const DOT_SPACING = 8;
+/** 战场宽度滑杆上限：绘制时把 rowWidth 线性映射到翼宽，满档横贯翼宽 */
+const ROW_WIDTH_MAX = 20000;
 /** 溃退后撤最大位移（像素）：随溃退进度线性增大，越接近离场退得越远 */
 const ROUT_DRIFT_MAX = 22;
 /** 有序撤退后撤最大位移（更克制，体现有序） */
@@ -626,6 +626,7 @@ function formationDotXY(
   nearY: number,
   farY: number,
   rows: readonly FormationRow[],
+  rowWidth: number,
   dot: DotRef,
   yOffset = 0,
 ): [number, number] {
@@ -638,7 +639,7 @@ function formationDotXY(
   const count = row?.count ?? 0;
   return [
     centerX +
-      (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth),
+      (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth, rowWidth),
     formationY(nearY, farY, dir, dot.row, spacing, yOffset),
   ];
 }
@@ -658,13 +659,16 @@ function formationY(
   return Math.max(lo, Math.min(hi, y));
 }
 
-/** 翼内统一的横向点间距：以最满的一排为准；点少时保持 8px，满排行横贯翼宽 */
+/** 翼内统一的横向点间距：行长度按战场宽度线性映射到翼宽，点数多时自动压缩 */
 function formationRowSpacing(
   rows: readonly FormationRow[],
   wingWidth: number,
+  rowWidth: number,
 ): number {
   const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 1);
-  return Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
+  const span = (wingWidth - 16) * Math.min(1, rowWidth / ROW_WIDTH_MAX);
+  // 最小 2px 间距：避免极窄战场宽度下点挤成一团
+  return Math.max(2, span / maxCount);
 }
 
 /** 溃退/撤退后撤位移：红方朝上、蓝方朝下（远离中央战线），随进度增大 */
@@ -732,6 +736,7 @@ function attackTargetXY(
     nearY,
     farY,
     rows,
+    sim.config.rowWidth,
     dot,
     routDrift(sim, dot.side, dot.wing),
   );
@@ -784,6 +789,7 @@ function drawFireArrows(
           nearY,
           farY,
           rows,
+          sim.config.rowWidth,
           source,
           routDrift(sim, side, i),
         );
@@ -928,6 +934,7 @@ function drawKillLines(
       nearY,
       farY,
       rows,
+      sim.config.rowWidth,
       source,
       routDrift(sim, source.side, source.wing),
     );
@@ -1069,6 +1076,7 @@ function drawKillMarks(
       nearY,
       farY,
       rows,
+      sim.config.rowWidth,
       dot,
       routDrift(sim, dot.side, dot.wing),
     );
@@ -1131,16 +1139,17 @@ function drawWingFormation(
   const frontAlpha = (routing ? 0.55 : 1) * fade;
   const middleAlpha = (routing ? 0.4 : 0.6) * fade;
   const rearAlpha = (routing ? 0.5 : 0.8) * fade;
-  const dotSpacing = formationRowSpacing(rows, wingWidth);
+  const dotSpacing = formationRowSpacing(rows, wingWidth, rowWidth);
 
   for (const row of rows) {
     const y = formationY(nearY, farY, dir, row.row, spacing, yOffset);
     // 点半径随横纵实际间距缩小，点数不设上限也不重叠
     const minSpacing = Math.min(dotSpacing, spacing || dotSpacing);
-    const radius = Math.max(0.8, minSpacing * 0.46);
+    // 半径按间距的 0.4 倍留出空隙，密集排也不会互相重叠
+    const radius = Math.max(0.8, minSpacing * 0.4);
     const frontRadius = Math.max(
       radius,
-      Math.min(radius + 0.5, minSpacing * 0.5 - 0.2),
+      Math.min(radius + 0.5, minSpacing * 0.5 - 0.3),
     );
     for (let c = 0; c < row.count; c++) {
       const x = centerX + (c - (row.count - 1) / 2) * dotSpacing;
