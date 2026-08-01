@@ -247,8 +247,8 @@ const FIELD_FRONT = 0;
 const FIELD_MIDDLE = 1;
 const FIELD_REAR = 2;
 const FIELD_GUNS = 3;
-/** 翼总兵力低于自身初始值该比例时视为溃败 */
-const ROUT_RATIO = 0.01;
+/** 翼总兵力低于自身初始值该比例时视为溃败（统计页共用） */
+export const ROUT_RATIO = 0.01;
 /** 默认士气下，伤亡达到该比例时组织度归零（士气可缩放该阈值） */
 const ORG_BREAK_LOSS = 0.3;
 /** 溃退持续回合数：期间无法攻击、只能被击杀，结束后视为逃生成功 */
@@ -288,8 +288,8 @@ const MORALE_MIN = 0.3;
 const MORALE_MAX = 3;
 /** 单次结算最大模拟步长（次），按整回合结算 */
 const MAX_STEP_TICKS = 1;
-/** 火炮系数：每门炮每轮的基础面杀伤 */
-const ARTILLERY_COEFF = 0.01;
+/** 火炮系数：每门炮每轮的基础面杀伤（按火力单元模型重标定，默认战斗约 1000 回合、火炮占比约 7%） */
+const ARTILLERY_COEFF = 0.6;
 /** 炮兵伤害倍率：面杀伤与反炮统一放大 */
 const ARTILLERY_DAMAGE_MULT = 5;
 /** 炮兵对后排（掩体内）的杀伤衰减系数 */
@@ -1266,7 +1266,8 @@ export class Simulation {
       const target = enemyWings[dot.wing];
       const total = target.front + target.middle + target.rear;
       if (total <= 0) continue;
-      const depth = (target.front + target.middle) / (this.config.rowWidth / 3);
+      // 阵型厚度：前+中兵力 ÷ 每排宽度（新口径下每排长度 = 战场宽度，厚度最多 3 排）
+      const depth = (target.front + target.middle) / this.config.rowWidth;
       const damage =
         perGun *
         ARTILLERY_COEFF *
@@ -1472,17 +1473,19 @@ export class Simulation {
     const echelon = rowInfo.echelon;
 
     if (echelon === "middle" || echelon === "rear") {
-      // 中排/后排按单元结算：命中后该梯队减少一个火力单元的兵力
+      // 中排/后排按单元结算：命中后该梯队减少一个火力单元的兵力；
+      // 末单元可能是余数，按实际剩余扣减，避免击杀统计虚高
       if (roll() >= probability) return false;
       const size = soldiersPerDot(dot.wing);
+      const loss = Math.min(size, echelon === "middle" ? wing.middle : wing.rear);
       if (echelon === "middle") {
-        wing.middle = Math.max(0, wing.middle - size);
+        wing.middle -= loss;
       } else {
-        wing.rear = Math.max(0, wing.rear - size);
+        wing.rear -= loss;
       }
-      this.killStats[attackerSide][attackerWing][type] += size;
-      this.casualties[dot.side][dot.wing] += size;
-      this.tickCasualties[dot.side][dot.wing] += size;
+      this.killStats[attackerSide][attackerWing][type] += loss;
+      this.casualties[dot.side][dot.wing] += loss;
+      this.tickCasualties[dot.side][dot.wing] += loss;
       this.tickKills[attackerSide][attackerWing] += 1;
       this.killedDotHistory.push({ dot, tick: this.tick });
       return true;
@@ -1558,8 +1561,6 @@ export class Simulation {
       const wings = side === 0 ? this.redWings : this.blueWings;
       const middleInitial =
         side === 0 ? this.redWingMiddleInitial : this.blueWingMiddleInitial;
-      const rearInitial =
-        side === 0 ? this.redWingRearInitial : this.blueWingRearInitial;
       const gunsInitial =
         side === 0 ? this.config.redArtillery : this.config.blueArtillery;
       for (let i = 0; i < WING_COUNT; i++) {
@@ -1570,7 +1571,8 @@ export class Simulation {
           this.frontSlotCap(side === 0 ? "red" : "blue", i),
         );
         wings[i].middle = clamp(state[base + FIELD_MIDDLE], 0, middleInitial[i]);
-        wings[i].rear = clamp(state[base + FIELD_REAR], 0, rearInitial[i]);
+        // 后排不设初始上限：翼间调度会把友翼后排增援进来（此前 clamp 会吞掉增援）
+        wings[i].rear = Math.max(0, state[base + FIELD_REAR]);
         wings[i].guns = clamp(
           state[base + FIELD_GUNS],
           0,

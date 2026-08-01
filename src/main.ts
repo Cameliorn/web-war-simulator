@@ -12,9 +12,9 @@ import {
   type TargetChoice,
 } from "./simulation";
 import { drawBattlefield, setupCanvas } from "./render";
+import { STORAGE_KEY } from "./shared";
 
 const BATTLEFIELD_BASE = { w: 760, h: 360 };
-const STATS_STORAGE_KEY = "war-sim-last-battle";
 
 function query<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -350,7 +350,7 @@ function saveBattleStats(sim: Simulation): void {
     redMoraleFinal: [0, 1, 2].map((i) => sim.getMorale("red", i)),
     blueMoraleFinal: [0, 1, 2].map((i) => sim.getMorale("blue", i)),
   };
-  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(payload));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
 
 /** 历史曲线降采样：限制统计载荷体积，长战斗也能流畅同步 */

@@ -14,9 +14,9 @@ import {
   formationRows,
   gunIconCount,
 } from "./simulation";
+import { BLUE_COLOR, RED_COLOR, WING_LABELS } from "./shared";
 
-export const RED_COLOR = "#b91c1c";
-export const BLUE_COLOR = "#1d4ed8";
+export { BLUE_COLOR, RED_COLOR };
 
 const RED_SOFT = "#d97878";
 const RED_FAINT = "#e2b3b3";
@@ -26,9 +26,6 @@ const AMBER = "#b45309";
 const ARTILLERY_COLOR = "#78716c";
 /** 火力单元点间距基准（像素）：默认战场宽度下的点距 */
 const DOT_SPACING = 8;
-/** 战场宽度滑杆范围（与 index.html 一致），绘制映射用 */
-const ROW_WIDTH_MIN = 500;
-const ROW_WIDTH_MAX = 20000;
 /** 溃退后撤最大位移（像素）：随溃退进度线性增大，越接近离场退得越远 */
 const ROUT_DRIFT_MAX = 22;
 /** 有序撤退后撤最大位移（更克制，体现有序） */
@@ -38,7 +35,6 @@ const GRID_COLOR = "rgba(41, 37, 36, 0.09)";
 const TEXT_COLOR = "#292524";
 const MUTED_COLOR = "#8a8378";
 const SERIF = "Georgia, 'Songti SC', serif";
-const WING_LABELS = ["左翼", "中军", "右翼"] as const;
 
 /** 战线到双方前排的距离（两军中间拉开，随画布高度自适应） */
 function centerGap(height: number): number {
@@ -629,7 +625,6 @@ function formationDotXY(
   nearY: number,
   farY: number,
   rows: readonly FormationRow[],
-  rowWidth: number,
   dot: DotRef,
   yOffset = 0,
 ): [number, number] {
@@ -642,7 +637,7 @@ function formationDotXY(
   const count = row?.count ?? 0;
   return [
     centerX +
-      (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth, rowWidth),
+      (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth),
     formationY(nearY, farY, dir, dot.row, spacing, yOffset),
   ];
 }
@@ -663,29 +658,16 @@ function formationY(
 }
 
 /**
- * 战场宽度 → 点间距倍率：
- * 画布宽度有限，不能把 500~20000 线性压进翼宽（默认 4500 会缩成一条窄条）。
- * 以默认宽度为锚点：默认时保持原始观感（倍率 ≈1），越窄越紧凑、越宽越舒展，
- * 整条滑杆都有平滑可见的变化。
+ * 翼内统一的横向点间距：
+ * 前排数量不变时，调整战场宽度不应改变图像——点距只由实际行点数决定，
+ * 点少时保持基准 8px，点多放不下时按翼宽压缩。
  */
-function rowWidthSpacingFactor(rowWidth: number): number {
-  const t = Math.min(
-    1,
-    Math.max(0, (rowWidth - ROW_WIDTH_MIN) / (ROW_WIDTH_MAX - ROW_WIDTH_MIN)),
-  );
-  return 0.55 + 0.9 * Math.sqrt(t);
-}
-
-/** 翼内统一的横向点间距：默认宽度保持基准点距，随战场宽度缩放，点数多时自动压缩 */
 function formationRowSpacing(
   rows: readonly FormationRow[],
   wingWidth: number,
-  rowWidth: number,
 ): number {
   const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 1);
-  const baseSpacing = Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
-  // 最小 2px 间距：避免极窄战场宽度下点挤成一团
-  return Math.max(2, baseSpacing * rowWidthSpacingFactor(rowWidth));
+  return Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
 }
 
 /** 溃退/撤退后撤位移：红方朝上、蓝方朝下（远离中央战线），随进度增大 */
@@ -753,7 +735,6 @@ function attackTargetXY(
     nearY,
     farY,
     rows,
-    sim.config.rowWidth,
     dot,
     routDrift(sim, dot.side, dot.wing),
   );
@@ -806,7 +787,6 @@ function drawFireArrows(
           nearY,
           farY,
           rows,
-          sim.config.rowWidth,
           source,
           routDrift(sim, side, i),
         );
@@ -951,7 +931,6 @@ function drawKillLines(
       nearY,
       farY,
       rows,
-      sim.config.rowWidth,
       source,
       routDrift(sim, source.side, source.wing),
     );
@@ -1093,7 +1072,6 @@ function drawKillMarks(
       nearY,
       farY,
       rows,
-      sim.config.rowWidth,
       dot,
       routDrift(sim, dot.side, dot.wing),
     );
@@ -1156,7 +1134,7 @@ function drawWingFormation(
   const frontAlpha = (routing ? 0.55 : 1) * fade;
   const middleAlpha = (routing ? 0.4 : 0.6) * fade;
   const rearAlpha = (routing ? 0.5 : 0.8) * fade;
-  const dotSpacing = formationRowSpacing(rows, wingWidth, rowWidth);
+  const dotSpacing = formationRowSpacing(rows, wingWidth);
 
   for (const row of rows) {
     const y = formationY(nearY, farY, dir, row.row, spacing, yOffset);

@@ -2,6 +2,7 @@ import "./style.css";
 import { drawChart, setupCanvas } from "./render";
 import {
   CAVALRY_PER_DOT,
+  ROUT_RATIO,
   type BattleConfig,
   type BattleStatus,
   type HistoryPoint,
@@ -10,12 +11,8 @@ import {
   type WingState,
   type Winner,
 } from "./simulation";
+import { BLUE_COLOR, RED_COLOR, STORAGE_KEY, WING_LABELS } from "./shared";
 
-const STORAGE_KEY = "war-sim-last-battle";
-const WING_LABELS = ["左翼", "中军", "右翼"] as const;
-const ROUT_RATIO = 0.01;
-const RED = "#b91c1c";
-const BLUE = "#1d4ed8";
 const BG = "#faf7ef";
 const GRID = "rgba(41, 37, 36, 0.1)";
 const MUTED = "#8a8378";
@@ -303,7 +300,7 @@ function renderWingCharts(b: SavedBattle): void {
         side,
         i,
         yMax,
-        side === "red" ? RED : BLUE,
+        side === "red" ? RED_COLOR : BLUE_COLOR,
       );
     }
   }
