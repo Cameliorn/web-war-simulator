@@ -497,10 +497,27 @@ window.addEventListener("keydown", (event) => {
     reset();
   }
 });
-collapseBtn.addEventListener("click", () => setSidebarHidden(true));
-expandBtn.addEventListener("click", () => setSidebarHidden(false));
-commanderCollapseBtn.addEventListener("click", () => setCommanderHidden(true));
-commanderExpandBtn.addEventListener("click", () => setCommanderHidden(false));
+// 侧边栏收起状态记忆：刷新后保持上次布局
+const SIDEBAR_HIDDEN_KEY = "war-sim-sidebar-hidden";
+const COMMANDER_HIDDEN_KEY = "war-sim-commander-hidden";
+if (localStorage.getItem(SIDEBAR_HIDDEN_KEY) === "1") setSidebarHidden(true);
+if (localStorage.getItem(COMMANDER_HIDDEN_KEY) === "1") setCommanderHidden(true);
+collapseBtn.addEventListener("click", () => {
+  setSidebarHidden(true);
+  localStorage.setItem(SIDEBAR_HIDDEN_KEY, "1");
+});
+expandBtn.addEventListener("click", () => {
+  setSidebarHidden(false);
+  localStorage.setItem(SIDEBAR_HIDDEN_KEY, "0");
+});
+commanderCollapseBtn.addEventListener("click", () => {
+  setCommanderHidden(true);
+  localStorage.setItem(COMMANDER_HIDDEN_KEY, "1");
+});
+commanderExpandBtn.addEventListener("click", () => {
+  setCommanderHidden(false);
+  localStorage.setItem(COMMANDER_HIDDEN_KEY, "0");
+});
 statsBtn.addEventListener("click", () => saveBattleStats(sim));
 commanderSelects.forEach((el) => {
   el.addEventListener("change", applyCommanderOrders);
