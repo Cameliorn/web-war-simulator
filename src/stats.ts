@@ -126,6 +126,8 @@ function renderKillTable(b: SavedBattle): void {
           `<td>${Math.round(kills[i].artillery)}</td>` +
           `<td>${Math.round(fin.guns)}</td>` +
           `<td>${Math.round(init.guns - fin.guns)}</td>` +
+          `<td>${Math.round(fin.cavalry ?? 0)}</td>` +
+          `<td>${Math.round((init.cavalry ?? 0) - (fin.cavalry ?? 0))}</td>` +
           `<td>${Math.round(orgFinal[i] * 100)}%</td>` +
           `<td>${status}</td>` +
           `</tr>`,
@@ -139,7 +141,7 @@ function renderKillTable(b: SavedBattle): void {
         `<td>${Math.round(sumInit - sumFin)}</td>` +
         `<td>${Math.round(sumInf)}</td>` +
         `<td>${Math.round(sumArt)}</td>` +
-        `<td></td><td></td><td></td><td></td>` +
+        `<td></td><td></td><td></td><td></td><td></td><td></td>` +
         `</tr>`,
     );
   }
@@ -170,6 +172,8 @@ function renderConfig(b: SavedBattle): void {
     ["蓝方梯队（前/中/后）", ratioText(c.blueEchelon)],
     ["红方火炮（左/中/右）", c.redArtillery.join(" / ")],
     ["蓝方火炮（左/中/右）", c.blueArtillery.join(" / ")],
+    ["红方骑兵（左/中/右）", (c.redCavalry ?? []).join(" / ")],
+    ["蓝方骑兵（左/中/右）", (c.blueCavalry ?? []).join(" / ")],
   ];
   query("#config-list").innerHTML = items
     .map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`)
@@ -224,7 +228,7 @@ function drawWingCurve(
   }
 
   const series: Array<{
-    key: "front" | "middle" | "rear" | "org";
+    key: "front" | "middle" | "rear" | "cavalry" | "org";
     dash: number[];
     alpha: number;
     color?: string;
@@ -232,6 +236,7 @@ function drawWingCurve(
     { key: "front", dash: [], alpha: 1 },
     { key: "middle", dash: [4, 3], alpha: 0.65 },
     { key: "rear", dash: [2, 3], alpha: 0.5 },
+    { key: "cavalry", dash: [6, 2], alpha: 0.75, color: "#a16207" },
     { key: "org", dash: [1, 2], alpha: 0.9, color: "#57534e" },
   ];
   for (const s of series) {

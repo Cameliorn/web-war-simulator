@@ -21,6 +21,10 @@ export interface BattleConfig {
   redArtillery: number[];
   /** 蓝方火炮按翼部署：[左翼, 中军, 右翼] */
   blueArtillery: number[];
+  /** 红方骑兵按翼部署：[左翼, 中军, 右翼] */
+  redCavalry: number[];
+  /** 蓝方骑兵按翼部署：[左翼, 中军, 右翼] */
+  blueCavalry: number[];
   /** 战斗随机性（0~1，0 为完全确定） */
   randomness: number;
   /** 伤害水平倍率（0.01~1，1 为原始伤害） */
@@ -81,6 +85,8 @@ export interface WingState {
   rear: number;
   /** 部署在本翼后方的火炮数量 */
   guns: number;
+  /** 部署在本翼后方（步兵与火炮之间）的骑兵数量 */
+  cavalry: number;
 }
 
 /** 单个翼在某一时刻的兵力快照 */
@@ -89,6 +95,7 @@ export interface WingSnapshot {
   middle: number;
   rear: number;
   guns: number;
+  cavalry: number;
   /** 组织度（0~1） */
   org: number;
 }
@@ -144,6 +151,45 @@ export interface DotRef {
   row: number;
   /** 行内列号（0 起） */
   col: number;
+}
+
+/** 被摧毁的火炮图标（供渲染端标红叉） */
+export interface BatteryMarkRef {
+  side: "red" | "blue";
+  wing: number;
+  /** 图标序号（0 起） */
+  icon: number;
+  /** 图标死亡时整翼的图标总数：复原该图标的画布坐标用 */
+  count: number;
+}
+
+/** 冲锋中的骑兵单元（供渲染端画箭头与高亮） */
+export interface CavalryChargeRef {
+  side: "red" | "blue";
+  wing: number;
+  /** 单元在翼内骑兵数组中的序号（映射到图标用） */
+  unitIndex: number;
+  /** 本次冲锋的目标 */
+  target: DotRef;
+}
+
+/** 被消灭的骑兵图标（供渲染端标红叉） */
+export interface CavalryMarkRef {
+  side: "red" | "blue";
+  wing: number;
+  icon: number;
+  /** 图标死亡时整翼的图标总数：复原该图标的画布坐标用 */
+  count: number;
+}
+
+/** 单个骑兵单元的状态机：准备（蓄力，不受伤害）→ 冲锋（一次对决）→ 回到准备 */
+interface CavalryUnitState {
+  /** 剩余蓄力回合数 */
+  chargeTicks: number;
+  /** 冲锋中：下一回合结算一次对决（保留一回合可见的冲锋状态） */
+  attacking: boolean;
+  /** 本次冲锋的目标（结算与绘制共用） */
+  target: DotRef | null;
 }
 
 /** 攻击对象：敌方前三排中的某个点，或敌方某门火炮 */
@@ -215,6 +261,10 @@ const ROUT_TARGET_KILL_MULT = 2;
 const RETREAT_TARGET_KILL_MULT = 0.5;
 /** 红叉标记保留回合数（暂停观察时也保留） */
 export const KILL_MARK_TICKS = 8;
+/** 骑兵蓄力回合数：准备状态持续该回合数后发动一次冲锋 */
+export const CAVALRY_CHARGE_TICKS = 30;
+/** 骑兵对决基础胜率：冲锋成功击杀目标单元、失败则自身阵亡一个单元 */
+const CAVALRY_DUEL_CHANCE = 0.5;
 /** 士气动态波动：伤亡占比下降系数 */
 const MORALE_CAS_COEFF = 1;
 /** 士气动态波动：击杀占比上升系数 */
@@ -345,6 +395,11 @@ export function gunIconCount(guns: number): number {
   return Math.min(8, Math.max(1, Math.round(guns / 10)));
 }
 
+/** 骑兵图标数量（最多 8 个），与绘制端共用 */
+export function cavalryIconCount(cavalry: number): number {
+  return Math.min(8, Math.max(1, Math.round(cavalry / 10)));
+}
+
 /** 确定性伪随机（按轮次种子），保证同一轮内箭头不闪烁 */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -364,12 +419,13 @@ function initWing(
   echelon: [number, number, number],
   rowWidth: number,
   guns: number,
+  cavalry: number,
 ): WingState {
   const formationWidth = 3 * rowWidth;
   const front = Math.min(total * echelon[0], formationWidth);
   const middle = Math.min(total * echelon[1], formationWidth);
   const rear = Math.max(0, total - front - middle);
-  return { front, middle, rear, guns };
+  return { front, middle, rear, guns, cavalry };
 }
 
 /** 默认将领命令：全部自动 / 固守 / 慢速投入 */
@@ -438,6 +494,15 @@ export class Simulation {
   private artilleryKillLines: GunAssignment[] = [];
   /** 近若干回合被击毙的士兵点（渲染红叉标记） */
   private killedDotHistory: Array<{ dot: DotRef; tick: number }> = [];
+  /** 近若干回合被摧毁的火炮图标（渲染红叉标记） */
+  private killedBatteryHistory: Array<BatteryMarkRef & { tick: number }> = [];
+  /** 骑兵单元状态机：每翼一列，按翼配置数量初始化 */
+  private cavalryUnits: {
+    red: CavalryUnitState[][];
+    blue: CavalryUnitState[][];
+  } = { red: [[], [], []], blue: [[], [], []] };
+  /** 近若干回合被消灭的骑兵图标（渲染红叉标记） */
+  private killedCavalryHistory: Array<CavalryMarkRef & { tick: number }> = [];
   /** 各翼累计伤亡人数（用于组织度计算） */
   private casualties: { red: number[]; blue: number[] } = {
     red: [0, 0, 0],
@@ -489,11 +554,23 @@ export class Simulation {
 
     this.redWings = this.redWingInitial.map(
       (total, i) =>
-        initWing(total, redEchelon, config.rowWidth, config.redArtillery[i] ?? 0),
+        initWing(
+          total,
+          redEchelon,
+          config.rowWidth,
+          config.redArtillery[i] ?? 0,
+          config.redCavalry[i] ?? 0,
+        ),
     );
     this.blueWings = this.blueWingInitial.map(
       (total, i) =>
-        initWing(total, blueEchelon, config.rowWidth, config.blueArtillery[i] ?? 0),
+        initWing(
+          total,
+          blueEchelon,
+          config.rowWidth,
+          config.blueArtillery[i] ?? 0,
+          config.blueCavalry[i] ?? 0,
+        ),
     );
 
     this.redWingFrontInitial = this.redWings.map((w) => w.front);
@@ -520,6 +597,19 @@ export class Simulation {
     // 前排士兵口径上限 = 初始前排人数（clamp 与补位都按士兵计，单元仅作命中粒度）
     this.redFrontSlotCap = [...this.redWingFrontInitial];
     this.blueFrontSlotCap = [...this.blueWingFrontInitial];
+    // 骑兵状态机：所有单元从满蓄力开始（同步首轮冲锋）
+    const initCavalry = (counts: number[]): CavalryUnitState[][] =>
+      counts.map((count) =>
+        Array.from({ length: Math.max(0, Math.round(count)) }, () => ({
+          chargeTicks: CAVALRY_CHARGE_TICKS,
+          attacking: false,
+          target: null,
+        })),
+      );
+    this.cavalryUnits = {
+      red: initCavalry(config.redCavalry ?? []),
+      blue: initCavalry(config.blueCavalry ?? []),
+    };
     this.killStats = {
       red: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
       blue: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
@@ -596,10 +686,17 @@ export class Simulation {
     this.killedDotHistory = this.killedDotHistory.filter(
       (entry) => entry.tick > this.tick - KILL_MARK_TICKS,
     );
+    this.killedBatteryHistory = this.killedBatteryHistory.filter(
+      (entry) => entry.tick > this.tick - KILL_MARK_TICKS,
+    );
+    this.killedCavalryHistory = this.killedCavalryHistory.filter(
+      (entry) => entry.tick > this.tick - KILL_MARK_TICKS,
+    );
     const next = this.integrate(this.toState(), dt);
     this.applyState(next);
     this.settleDirectFire(dt, noise);
     this.settleArtillery(dt, noise);
+    this.settleCavalry(dt, noise);
     this.refillFrontSlots();
     this.updateRoutStates();
     this.updateMorale();
@@ -844,6 +941,41 @@ export class Simulation {
     return this.killedDotHistory.map((entry) => entry.dot);
   }
 
+  /** 近若干回合被摧毁的火炮图标（渲染红叉） */
+  getKilledBatteryIcons(): BatteryMarkRef[] {
+    return this.killedBatteryHistory.map(({ side, wing, icon, count }) => ({
+      side,
+      wing,
+      icon,
+      count,
+    }));
+  }
+
+  /** 当前处于冲锋状态、等待结算的骑兵单元（渲染箭头与高亮） */
+  getCavalryCharges(): CavalryChargeRef[] {
+    const charges: CavalryChargeRef[] = [];
+    for (const side of ["red", "blue"] as const) {
+      for (let i = 0; i < WING_COUNT; i++) {
+        this.cavalryUnits[side][i].forEach((unit, unitIndex) => {
+          if (unit.attacking && unit.target) {
+            charges.push({ side, wing: i, unitIndex, target: unit.target });
+          }
+        });
+      }
+    }
+    return charges;
+  }
+
+  /** 近若干回合被消灭的骑兵图标（渲染红叉） */
+  getKilledCavalryIcons(): CavalryMarkRef[] {
+    return this.killedCavalryHistory.map(({ side, wing, icon, count }) => ({
+      side,
+      wing,
+      icon,
+      count,
+    }));
+  }
+
   /** 每个整回合只计算一次攻击分配（显示与结算共用同一份） */
   private ensureAssignmentsCached(planTick: number): void {
     if (
@@ -967,6 +1099,24 @@ export class Simulation {
     this.gunAssignmentsCache = assignments;
   }
 
+  /** 火炮图标数跨过阈值后，把新消失的图标记入红叉历史 */
+  private recordBatteryIconLoss(
+    side: "red" | "blue",
+    wing: number,
+    beforeIcons: number,
+    afterIcons: number,
+  ): void {
+    for (let icon = afterIcons; icon < beforeIcons; icon++) {
+      this.killedBatteryHistory.push({
+        side,
+        wing,
+        icon,
+        count: beforeIcons,
+        tick: this.tick,
+      });
+    }
+  }
+
   /**
    * 直瞄火力逐点结算：每一个前排士兵点向自己的攻击对象射击，
    * 单发命中按概率击毙目标点（概率 = 单位火力 × 步长），
@@ -1011,6 +1161,7 @@ export class Simulation {
         const enemyWings =
           assignment.target.side === "red" ? this.redWings : this.blueWings;
         const enemy = enemyWings[assignment.target.wing];
+        const beforeIcons = gunIconCount(enemy.guns);
         // 每个攻击点逐发摧毁火炮：伤害 = 摧毁系数 × 扰动 × 步长 × 伤害倍率
         // （不再乘直瞄火力系数，否则会被额外缩小约 25 倍）
         const gunLoss = Math.min(
@@ -1018,6 +1169,13 @@ export class Simulation {
           GUN_KILL_COEFF * noiseVal * dt * this.config.damageScale,
         );
         enemy.guns -= gunLoss;
+        const afterIcons = enemy.guns <= 0 ? 0 : gunIconCount(enemy.guns);
+        this.recordBatteryIconLoss(
+          assignment.target.side,
+          assignment.target.wing,
+          beforeIcons,
+          afterIcons,
+        );
         this.killStats[source.side][source.wing].infantry += gunLoss;
       } else {
         const killed = this.tryKillDot(
@@ -1061,6 +1219,7 @@ export class Simulation {
         const enemyWings =
           assignment.target.side === "red" ? this.redWings : this.blueWings;
         const enemy = enemyWings[assignment.target.wing];
+        const beforeIcons = gunIconCount(enemy.guns);
         const gunLoss = Math.min(
           enemy.guns,
           perGun *
@@ -1071,6 +1230,13 @@ export class Simulation {
             ARTILLERY_DAMAGE_MULT,
         );
         enemy.guns -= gunLoss;
+        const afterIcons = enemy.guns <= 0 ? 0 : gunIconCount(enemy.guns);
+        this.recordBatteryIconLoss(
+          assignment.target.side,
+          assignment.target.wing,
+          beforeIcons,
+          afterIcons,
+        );
         this.killStats[assignment.side][assignment.wing].artillery += gunLoss;
         continue;
       }
@@ -1121,6 +1287,106 @@ export class Simulation {
       this.killStats[assignment.side][assignment.wing].artillery += loss;
       this.casualties[dot.side][dot.wing] += loss;
       this.tickCasualties[dot.side][dot.wing] += loss;
+    }
+  }
+
+  /**
+   * 骑兵状态机：准备状态蓄力（不受伤害），蓄满后进入冲锋；
+   * 冲锋时每个骑兵单元与目标做一次对决：成功则击杀目标单元、自身无损，
+   * 失败则自身阵亡一个单元、目标无损，随后回到准备状态重新蓄力。
+   */
+  private settleCavalry(dt: number, noise: Noise): void {
+    for (const side of ["red", "blue"] as const) {
+      for (let i = 0; i < WING_COUNT; i++) {
+        // 溃退/撤退中的翼不会主动冲锋
+        if (this.isRouting(side, i)) continue;
+        const wing = (side === "red" ? this.redWings : this.blueWings)[i];
+        const units = this.cavalryUnits[side][i];
+        // 数量同步：对决失败后截断多余状态
+        while (units.length > Math.max(0, wing.cavalry)) units.pop();
+        if (wing.cavalry <= 0) continue;
+
+        let idx = 0;
+        while (idx < units.length) {
+          const unit = units[idx];
+          if (unit.attacking) {
+            this.resolveCavalryDuel(side, i, idx, unit, noise);
+            if (unit.attacking) {
+              // 阵亡：单元已被移除，idx 保持原位继续下一个
+              continue;
+            }
+            // 对决结束且存活：回到准备状态重新蓄力
+            unit.chargeTicks = CAVALRY_CHARGE_TICKS;
+            unit.target = null;
+            idx++;
+          } else {
+            unit.chargeTicks -= dt;
+            if (unit.chargeTicks <= 0) {
+              // 蓄满：进入冲锋状态并锁定目标（下一回合结算，冲锋状态可见一回合）
+              unit.attacking = true;
+              unit.target = this.pickCavalryTarget(side, i, idx);
+            }
+            idx++;
+          }
+        }
+      }
+    }
+  }
+
+  /** 选择一个骑兵冲锋目标：当面敌翼优先，翼灭后按侧击规则转移 */
+  private pickCavalryTarget(
+    side: "red" | "blue",
+    wingIndex: number,
+    unitIndex: number,
+  ): DotRef | null {
+    const enemySide = side === "red" ? "blue" : "red";
+    const targetWings = this.fireTargets(side, wingIndex);
+    const candidates = targetWings.flatMap((j) =>
+      this.attackableDots(enemySide, j),
+    );
+    if (candidates.length === 0) return null;
+    const rng = mulberry32(
+      this.tick * 6133 + (side === "red" ? 700 : 800) + wingIndex * 43 + unitIndex * 97,
+    );
+    return candidates[Math.floor(rng() * candidates.length)];
+  }
+
+  /** 一次骑兵对决：成功必杀目标单元；失败则自身阵亡并记录红叉 */
+  private resolveCavalryDuel(
+    side: "red" | "blue",
+    wingIndex: number,
+    unitIndex: number,
+    unit: CavalryUnitState,
+    noise: Noise,
+  ): void {
+    const wing = (side === "red" ? this.redWings : this.blueWings)[wingIndex];
+    const target =
+      unit.target ?? this.pickCavalryTarget(side, wingIndex, unitIndex);
+    // 没有可攻击目标：退回蓄力，不算对决失败
+    if (!target) return;
+    const chance = CAVALRY_DUEL_CHANCE * noise[side][wingIndex];
+    const roll = mulberry32(
+      this.tick * 7331 + (side === "red" ? 900 : 1000) + wingIndex * 53 + unitIndex * 113,
+    );
+    if (roll() < chance) {
+      // 冲锋成功：目标单元被必杀，自身无损
+      this.tryKillDot(target, 1, () => 0, side, wingIndex, "infantry");
+      unit.attacking = false;
+    } else {
+      // 对决失败：自身阵亡一个单元，目标无损失
+      const beforeIcons = cavalryIconCount(wing.cavalry);
+      wing.cavalry = Math.max(0, wing.cavalry - 1);
+      const afterIcons = wing.cavalry <= 0 ? 0 : cavalryIconCount(wing.cavalry);
+      for (let icon = afterIcons; icon < beforeIcons; icon++) {
+        this.killedCavalryHistory.push({
+          side,
+          wing: wingIndex,
+          icon,
+          count: beforeIcons,
+          tick: this.tick,
+        });
+      }
+      this.cavalryUnits[side][wingIndex].splice(unitIndex, 1);
     }
   }
 
@@ -1391,7 +1657,9 @@ export class Simulation {
     wing.middle = 0;
     wing.rear = 0;
     wing.guns = 0;
+    wing.cavalry = 0;
     slots[wingIndex].alive.fill(false);
+    this.cavalryUnits[side][wingIndex].length = 0;
   }
 
   private zeroWings(side: "red" | "blue"): void {
@@ -1402,7 +1670,9 @@ export class Simulation {
       wing.middle = 0;
       wing.rear = 0;
       wing.guns = 0;
+      wing.cavalry = 0;
       slots[i].alive.fill(false);
+      this.cavalryUnits[side][i].length = 0;
     });
   }
 
@@ -1462,6 +1732,7 @@ export class Simulation {
         middle: wing.middle,
         rear: wing.rear,
         guns: wing.guns,
+        cavalry: wing.cavalry,
         org: this.getOrganization(side, i),
       }));
     return {

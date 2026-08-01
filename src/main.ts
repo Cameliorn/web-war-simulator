@@ -109,6 +109,12 @@ const redArtilleryInputs = [0, 1, 2].map((i) =>
 const blueArtilleryInputs = [0, 1, 2].map((i) =>
   query<HTMLInputElement>(`#blue-artillery-${i}`),
 );
+const redCavalryInputs = [0, 1, 2].map((i) =>
+  query<HTMLInputElement>(`#red-cavalry-${i}`),
+);
+const blueCavalryInputs = [0, 1, 2].map((i) =>
+  query<HTMLInputElement>(`#blue-cavalry-${i}`),
+);
 const randomnessInput = query<HTMLInputElement>("#randomness");
 const speedInput = query<HTMLInputElement>("#speed");
 const damageScaleInput = query<HTMLInputElement>("#damage-scale");
@@ -138,6 +144,12 @@ const redArtilleryOuts = [0, 1, 2].map((i) =>
 );
 const blueArtilleryOuts = [0, 1, 2].map((i) =>
   query<HTMLOutputElement>(`#blue-artillery-${i}-out`),
+);
+const redCavalryOuts = [0, 1, 2].map((i) =>
+  query<HTMLOutputElement>(`#red-cavalry-${i}-out`),
+);
+const blueCavalryOuts = [0, 1, 2].map((i) =>
+  query<HTMLOutputElement>(`#blue-cavalry-${i}-out`),
 );
 const randomnessOut = query<HTMLOutputElement>("#randomness-out");
 const speedOut = query<HTMLOutputElement>("#speed-out");
@@ -204,6 +216,8 @@ function readConfig(): BattleConfig {
     ],
     redArtillery: redArtilleryInputs.map((el) => el.valueAsNumber),
     blueArtillery: blueArtilleryInputs.map((el) => el.valueAsNumber),
+    redCavalry: redCavalryInputs.map((el) => el.valueAsNumber),
+    blueCavalry: blueCavalryInputs.map((el) => el.valueAsNumber),
     randomness: randomnessInput.valueAsNumber,
     damageScale: damageScaleInput.valueAsNumber,
     redMorale: redMoraleInput.valueAsNumber,
@@ -231,6 +245,14 @@ function statusText(sim: Simulation): string {
 function updateHud(sim: Simulation): void {
   const redGuns = sim.redWings.reduce((total, wing) => total + wing.guns, 0);
   const blueGuns = sim.blueWings.reduce((total, wing) => total + wing.guns, 0);
+  const redCavalry = sim.redWings.reduce(
+    (total, wing) => total + wing.cavalry,
+    0,
+  );
+  const blueCavalry = sim.blueWings.reduce(
+    (total, wing) => total + wing.cavalry,
+    0,
+  );
   const avgOrg = (side: "red" | "blue"): number => {
     const sum = [0, 1, 2].reduce(
       (total, i) => total + sim.getOrganization(side, i),
@@ -240,10 +262,12 @@ function updateHud(sim: Simulation): void {
   };
   redHud.textContent =
     `红方 前 ${Math.round(sim.redFront)} · 中 ${Math.round(sim.redMiddle)}` +
-    ` · 后 ${Math.round(sim.redRear)} · 火炮 ${Math.round(redGuns)} · 组 ${Math.round(avgOrg("red"))}%`;
+    ` · 后 ${Math.round(sim.redRear)} · 火炮 ${Math.round(redGuns)}` +
+    ` · 骑兵 ${Math.round(redCavalry)} · 组 ${Math.round(avgOrg("red"))}%`;
   blueHud.textContent =
     `蓝方 前 ${Math.round(sim.blueFront)} · 中 ${Math.round(sim.blueMiddle)}` +
-    ` · 后 ${Math.round(sim.blueRear)} · 火炮 ${Math.round(blueGuns)} · 组 ${Math.round(avgOrg("blue"))}%`;
+    ` · 后 ${Math.round(sim.blueRear)} · 火炮 ${Math.round(blueGuns)}` +
+    ` · 骑兵 ${Math.round(blueCavalry)} · 组 ${Math.round(avgOrg("blue"))}%`;
   // 整回合结算：时间始终为整数回合
   timeHud.textContent = `第 ${sim.time.toFixed(0)} 次`;
   statusHud.textContent = statusText(sim);
@@ -309,12 +333,14 @@ function saveBattleStats(sim: Simulation): void {
       middle: sim.redWingMiddleInitial[i],
       rear: sim.redWingRearInitial[i],
       guns: sim.config.redArtillery[i] ?? 0,
+      cavalry: sim.config.redCavalry[i] ?? 0,
     })),
     blueWingInitial: [0, 1, 2].map((i) => ({
       front: sim.blueWingFrontInitial[i],
       middle: sim.blueWingMiddleInitial[i],
       rear: sim.blueWingRearInitial[i],
       guns: sim.config.blueArtillery[i] ?? 0,
+      cavalry: sim.config.blueCavalry[i] ?? 0,
     })),
     redOrgFinal: [0, 1, 2].map((i) => sim.getOrganization("red", i)),
     blueOrgFinal: [0, 1, 2].map((i) => sim.getOrganization("blue", i)),
@@ -354,6 +380,8 @@ function setParamsDisabled(disabled: boolean): void {
     ...blueDeployInputs,
     ...redArtilleryInputs,
     ...blueArtilleryInputs,
+    ...redCavalryInputs,
+    ...blueCavalryInputs,
     randomnessInput,
     damageScaleInput,
     redMoraleInput,
@@ -499,6 +527,8 @@ const outputBindings: Array<readonly [HTMLInputElement, HTMLOutputElement]> = [
   [rowWidthInput, rowWidthOut],
   ...redArtilleryInputs.map((input, i) => [input, redArtilleryOuts[i]] as const),
   ...blueArtilleryInputs.map((input, i) => [input, blueArtilleryOuts[i]] as const),
+  ...redCavalryInputs.map((input, i) => [input, redCavalryOuts[i]] as const),
+  ...blueCavalryInputs.map((input, i) => [input, blueCavalryOuts[i]] as const),
   [randomnessInput, randomnessOut],
   [speedInput, speedOut],
   [redMoraleInput, redMoraleOut],

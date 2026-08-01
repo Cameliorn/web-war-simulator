@@ -58,7 +58,7 @@
               </label>
             </section>
             <section class="panel-card panel-card-wide">
-              <h2>翼部署（左 / 中 / 右）</h2>
+              <h2>翼部署</h2>
               <div class="deploy-grid">
                 <label class="ctl">
                   <span>红方·左翼占比</span>
@@ -143,7 +143,7 @@
               </label>
             </section>
             <section class="panel-card panel-card-wide">
-              <h2>梯队配置（前 / 中 / 后）</h2>
+              <h2>梯队配置</h2>
               <div class="label-grid">
                 <label class="ctl">
                   <span>红方·前排占比</span>
@@ -195,7 +195,7 @@
                   </span>
                 </label>
                 <label class="ctl">
-                  <span>战场宽度（每排人数）</span>
+                <span>战场宽度</span>
                   <span class="range-row">
                     <input id="row-width" type="range" min="500" max="20000" step="100" value="4500" />
                     <output id="row-width-out">4500</output>
@@ -204,7 +204,7 @@
               </div>
             </section>
             <section class="panel-card panel-card-wide">
-              <h2>远程集团（按翼部署）</h2>
+              <h2>远程集团</h2>
               <div class="label-grid">
                 <label class="ctl">
                   <span>红方·左翼</span>
@@ -250,6 +250,53 @@
                 </label>
               </div>
             </section>
+            <section class="panel-card panel-card-wide">
+              <h2>骑兵</h2>
+              <div class="label-grid">
+                <label class="ctl">
+                  <span>红方·左翼</span>
+                  <span class="range-row">
+                    <input id="red-cavalry-0" type="range" min="0" max="100" step="5" value="5" />
+                    <output id="red-cavalry-0-out">5</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·左翼</span>
+                  <span class="range-row">
+                    <input id="blue-cavalry-0" type="range" min="0" max="100" step="5" value="5" />
+                    <output id="blue-cavalry-0-out">5</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·中军</span>
+                  <span class="range-row">
+                    <input id="red-cavalry-1" type="range" min="0" max="100" step="5" value="15" />
+                    <output id="red-cavalry-1-out">15</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·中军</span>
+                  <span class="range-row">
+                    <input id="blue-cavalry-1" type="range" min="0" max="100" step="5" value="15" />
+                    <output id="blue-cavalry-1-out">15</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>红方·右翼</span>
+                  <span class="range-row">
+                    <input id="red-cavalry-2" type="range" min="0" max="100" step="5" value="5" />
+                    <output id="red-cavalry-2-out">5</output>
+                  </span>
+                </label>
+                <label class="ctl">
+                  <span>蓝方·右翼</span>
+                  <span class="range-row">
+                    <input id="blue-cavalry-2" type="range" min="0" max="100" step="5" value="5" />
+                    <output id="blue-cavalry-2-out">5</output>
+                  </span>
+                </label>
+              </div>
+            </section>
             <div id="actions">
               <button id="toggle-btn" type="button">开始模拟</button>
               <button id="reset-btn" type="button">重置</button>
@@ -258,8 +305,8 @@
         </aside>
         <section id="stage">
           <div id="hud">
-            <span id="red-hud">红方 前 3300 · 中 3400 · 后 3300 · 火炮 90</span>
-            <span id="blue-hud">蓝方 前 3300 · 中 3400 · 后 3300 · 火炮 90</span>
+            <span id="red-hud">红方 前 3300 · 中 3400 · 后 3300 · 火炮 90 · 骑兵 25</span>
+            <span id="blue-hud">蓝方 前 3300 · 中 3400 · 后 3300 · 火炮 90 · 骑兵 25</span>
             <span id="time-hud">第 0.0 次</span>
             <span id="status-hud">未开始</span>
           </div>
