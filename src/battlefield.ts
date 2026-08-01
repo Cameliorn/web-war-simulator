@@ -421,7 +421,7 @@ function cavalryY(
   const totalRows = Math.max(1, rows.length);
   const space = Math.abs(farY - nearY);
   const spacing =
-    totalRows > 1 ? Math.max(2, Math.min(10, space / (totalRows - 1))) : 0;
+    totalRows > 1 ? Math.max(2, Math.min(12, space / (totalRows - 1))) : 0;
   const dir = nearY <= farY ? 1 : -1;
   const last = rows[rows.length - 1];
   const rearY = last ? nearY + dir * last.row * spacing : nearY;
@@ -509,7 +509,7 @@ function formationDotXY(
   const totalRows = Math.max(1, rows.length);
   const space = Math.abs(farY - nearY);
   const spacing =
-    totalRows > 1 ? Math.max(2, Math.min(10, space / (totalRows - 1))) : 0;
+    totalRows > 1 ? Math.max(2, Math.min(12, space / (totalRows - 1))) : 0;
   const dir = nearY <= farY ? 1 : -1;
   const row = rows.find((r) => r.row === dot.row);
   const count = row?.count ?? 0;
@@ -1009,7 +1009,7 @@ function drawWingFormation(
   const space = Math.abs(farY - nearY);
 
   const spacing =
-    totalRows > 1 ? Math.max(2, Math.min(10, space / (totalRows - 1))) : 0;
+    totalRows > 1 ? Math.max(2, Math.min(12, space / (totalRows - 1))) : 0;
   const dir = nearY <= farY ? 1 : -1;
   const fillColor = routing ? "#8f8b84" : color;
   const ringColor = routing ? "#8f8b84" : softColor;

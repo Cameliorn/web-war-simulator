@@ -15,7 +15,8 @@ import { drawBattlefield } from "./battlefield";
 import { setupCanvas } from "./canvas";
 import { STORAGE_KEY } from "./shared";
 
-const BATTLEFIELD_BASE = { w: 760, h: 360 };
+// 战场画布加高：给阵型更多纵向空间，行距不会被压缩到重叠
+const BATTLEFIELD_BASE = { w: 760, h: 440 };
 
 function query<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);
