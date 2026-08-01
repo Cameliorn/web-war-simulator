@@ -2,6 +2,10 @@
 
 一个基于 **兰彻斯特方程（Lanchester's Laws）** 的近现代战争模拟器，使用 Vite + TypeScript 构建，纯 Canvas 渲染，无第三方游戏框架。
 
+## 在线 Demo
+
+GitHub Pages：<https://cameliorn.github.io/web-war-simulator/>
+
 ## Demo 功能
 
 - **前 / 中 / 后三梯队**：前排 = 最前面三排（唯一开火的梯队，每翼 ≤ 战场宽度）；中排紧贴前排、**瞬间补位**；后排为纵深预备队、**慢速支援**；前 + 中每翼合计不超过战场宽度（全翼 ≤ 3 × 战场宽度）。
