@@ -271,18 +271,19 @@ function normalizeEchelon(echelon: [number, number, number]): [number, number, n
   return [echelon[0] / sum, echelon[1] / sum, echelon[2] / sum];
 }
 
-/** 中军每排最多火力单元数（视觉点数上限，与绘制端共用） */
-export const ROW_DOT_CAP = 30;
 /** 火力单元射击间隔（回合）：千回合约 70 发，每个点并非每回合射击 */
 const FIRE_INTERVAL = 14;
-/** 每个点代表的士兵数：中军 25 人（每排约 30 点）、两翼 19 人（每排恰好 10 点） */
+/** 每个点代表的士兵数：中军 25 人、两翼 19 人（单元粒度，与排容量换算共用） */
 function soldiersPerDot(wing: number): number {
   return wing === 1 ? 25 : 19;
 }
 
-/** 每排容量：中军每排 30 个火力单元、两翼每排 10 个（与绘制端共用） */
-export function rowCapacity(wing: number): number {
-  return wing === 1 ? ROW_DOT_CAP : 10;
+/**
+ * 每排容量（点数）：每排长度 = 战场宽度（人），按每点人数换算成火力单元。
+ * 容量随 rowWidth 缩放，保证前排三排最多容纳 3 × rowWidth 人。
+ */
+export function rowCapacity(wing: number, rowWidth: number): number {
+  return Math.max(1, Math.ceil(rowWidth / soldiersPerDot(wing)));
 }
 
 /** 把若干火力单元尽量均匀地分布到固定行数（前排固定三排） */
@@ -308,8 +309,9 @@ export function formationRows(
   middle: number,
   rear: number,
   wing: number,
+  rowWidth: number,
 ): FormationRow[] {
-  const cap = rowCapacity(wing);
+  const cap = rowCapacity(wing, rowWidth);
   const perDot = soldiersPerDot(wing);
   const toUnits = (n: number) => Math.max(0, Math.ceil(n / perDot));
   const frontUnits = toUnits(front);
@@ -354,15 +356,18 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** 初始化一个翼：前排 ≤ 战场宽度，前+中 ≤ 战场宽度，超出部分自动转入后排 */
+/** 初始化一个翼：前排固定三排、每排长度 = 战场宽度；
+ *  front 与 middle 各自独立按同一宽度上限计算（每排长度相同，显示上更整齐），
+ *  各自超过 3×rowWidth 的部分自动转入后排 */
 function initWing(
   total: number,
   echelon: [number, number, number],
   rowWidth: number,
   guns: number,
 ): WingState {
-  const front = Math.min(total * echelon[0], rowWidth);
-  const middle = Math.min(total * echelon[1], Math.max(0, rowWidth - front));
+  const formationWidth = 3 * rowWidth;
+  const front = Math.min(total * echelon[0], formationWidth);
+  const middle = Math.min(total * echelon[1], formationWidth);
   const rear = Math.max(0, total - front - middle);
   return { front, middle, rear, guns };
 }
@@ -784,6 +789,7 @@ export class Simulation {
       w.middle,
       w.rear,
       wing,
+      this.config.rowWidth,
     )) {
       if (row.echelon !== echelon) continue;
       for (let c = 0; c < row.count; c++) {
@@ -1134,6 +1140,7 @@ export class Simulation {
       wing.middle,
       wing.rear,
       dot.wing,
+      this.config.rowWidth,
     );
     const rowInfo = rows.find((r) => r.row === dot.row);
     if (!rowInfo || dot.col >= rowInfo.count) return false;
@@ -1201,6 +1208,7 @@ export class Simulation {
       wing.middle,
       wing.rear,
       wingIndex,
+      this.config.rowWidth,
     ).filter((r) => r.echelon === "front");
     let rank = 0;
     for (const r of rows) {

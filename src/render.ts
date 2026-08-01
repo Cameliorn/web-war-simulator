@@ -22,7 +22,7 @@ const BLUE_SOFT = "#84a5dd";
 const BLUE_FAINT = "#b7c9e8";
 const AMBER = "#b45309";
 const ARTILLERY_COLOR = "#78716c";
-/** 火力单元点间距：各排点以翼中心紧凑居中，不随翼宽拉伸 */
+/** 火力单元点间距上限：行点少时保持 8px，行点过多时按翼宽压缩 */
 const DOT_SPACING = 8;
 const BG_COLOR = "#faf7ef";
 const GRID_COLOR = "rgba(41, 37, 36, 0.09)";
@@ -179,6 +179,7 @@ export function drawBattlefield(
       redWing.middle,
       redWing.rear,
       i,
+      sim.config.rowWidth,
       centerY - gap,
       52,
       RED_COLOR,
@@ -193,6 +194,7 @@ export function drawBattlefield(
       blueWing.middle,
       blueWing.rear,
       i,
+      sim.config.rowWidth,
       centerY + gap,
       height - 70,
       BLUE_COLOR,
@@ -485,8 +487,7 @@ function batteryY(side: "red" | "blue", height: number): number {
 /** 把阵型中的士兵点映射为画布坐标（与 drawWingFormation 同一布局） */
 function formationDotXY(
   centerX: number,
-  _wingWidth: number,
-  _rowWidth: number,
+  wingWidth: number,
   nearY: number,
   farY: number,
   rows: readonly FormationRow[],
@@ -500,9 +501,15 @@ function formationDotXY(
   const row = rows.find((r) => r.row === dot.row);
   const count = row?.count ?? 0;
   return [
-    centerX + (dot.col - (count - 1) / 2) * DOT_SPACING,
+    centerX + (dot.col - (count - 1) / 2) * rowDotSpacing(row, wingWidth),
     nearY + dir * dot.row * spacing,
   ];
+}
+
+/** 某行横向点间距：默认 8px；点数多到一排放不下时压缩，使满排行正好横贯翼宽 */
+function rowDotSpacing(row: FormationRow | undefined, wingWidth: number): number {
+  const count = Math.max(1, row?.count ?? 1);
+  return Math.max(1, Math.min(DOT_SPACING, (wingWidth - 16) / count));
 }
 
 /** 攻击对象 → 画布坐标 */
@@ -530,12 +537,12 @@ function attackTargetXY(
     wing.middle,
     wing.rear,
     dot.wing,
+    sim.config.rowWidth,
   );
   const centerX = wingMargin + wingWidth * (dot.wing + 0.5);
   return formationDotXY(
     centerX,
     wingWidth,
-    sim.config.rowWidth,
     nearY,
     farY,
     rows,
@@ -568,6 +575,7 @@ function drawFireArrows(
         wing.middle,
         wing.rear,
         i,
+        sim.config.rowWidth,
       );
       const flanking =
         enemyWings[i].front + enemyWings[i].middle + enemyWings[i].rear <= 0;
@@ -586,7 +594,6 @@ function drawFireArrows(
         const [sx, sy] = formationDotXY(
           centerX,
           wingWidth,
-          sim.config.rowWidth,
           nearY,
           farY,
           rows,
@@ -685,11 +692,11 @@ function drawKillLines(
       wing.middle,
       wing.rear,
       source.wing,
+      sim.config.rowWidth,
     );
     const [sx, sy] = formationDotXY(
       centerX,
       wingWidth,
-      sim.config.rowWidth,
       nearY,
       farY,
       rows,
@@ -747,11 +754,11 @@ function drawKillMarks(
       wing.middle,
       wing.rear,
       dot.wing,
+      sim.config.rowWidth,
     );
     const [x, y] = formationDotXY(
       centerX,
       wingWidth,
-      sim.config.rowWidth,
       nearY,
       farY,
       rows,
@@ -779,40 +786,42 @@ function drawKillMarks(
 function drawWingFormation(
   ctx: CanvasRenderingContext2D,
   centerX: number,
-  _wingWidth: number,
+  wingWidth: number,
   front: number,
   middle: number,
   rear: number,
   wing: number,
+  rowWidth: number,
   nearY: number,
   farY: number,
   color: string,
   softColor: string,
   routing = false,
 ): void {
-  // 一个点代表一个火力单元：每排点数 = 该翼排容量（中军 30、两翼 10）
-  const rows = formationRows(front, middle, rear, wing);
+  // 一个点代表一个火力单元：每排点数 = 战场宽度 / 每点人数
+  const rows = formationRows(front, middle, rear, wing, rowWidth);
   const totalRows = Math.max(1, rows.length);
   const space = Math.abs(farY - nearY);
 
   const spacing =
     totalRows > 1 ? Math.max(2, Math.min(8, space / (totalRows - 1))) : 0;
   const dir = nearY <= farY ? 1 : -1;
-  // 点半径随横纵实际间距缩小，点数不设上限也不重叠
-  const minSpacing = Math.min(DOT_SPACING, spacing || DOT_SPACING);
-  const radius = Math.max(0.8, minSpacing * 0.46);
-  const frontRadius = Math.max(
-    radius,
-    Math.min(radius + 0.5, minSpacing * 0.5 - 0.2),
-  );
   const fillColor = routing ? "#8f8b84" : color;
   const ringColor = routing ? "#8f8b84" : softColor;
   const alpha = routing ? 0.55 : 1;
 
   for (const row of rows) {
     const y = nearY + dir * row.row * spacing;
+    const dotSpacing = rowDotSpacing(row, wingWidth);
+    // 点半径随横纵实际间距缩小，点数不设上限也不重叠
+    const minSpacing = Math.min(dotSpacing, spacing || dotSpacing);
+    const radius = Math.max(0.8, minSpacing * 0.46);
+    const frontRadius = Math.max(
+      radius,
+      Math.min(radius + 0.5, minSpacing * 0.5 - 0.2),
+    );
     for (let c = 0; c < row.count; c++) {
-      const x = centerX + (c - (row.count - 1) / 2) * DOT_SPACING;
+      const x = centerX + (c - (row.count - 1) / 2) * dotSpacing;
       if (row.echelon === "front") {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = fillColor;
