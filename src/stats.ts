@@ -49,7 +49,19 @@ function loadBattle(): SavedBattle | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as SavedBattle;
+    const battle = JSON.parse(raw) as SavedBattle;
+    // 防御性校验：缺核心字段的旧/损坏存档按“无数据”处理，避免统计页报错
+    if (
+      typeof battle.version !== "number" ||
+      !battle.config ||
+      !battle.killStats ||
+      !Array.isArray(battle.history) ||
+      !Array.isArray(battle.redWings) ||
+      !Array.isArray(battle.blueWings)
+    ) {
+      return null;
+    }
+    return battle;
   } catch {
     return null;
   }
@@ -330,7 +342,12 @@ function renderBattle(battle: SavedBattle): void {
 let lastSavedAt = 0;
 
 function refresh(): void {
-  const battle = loadBattle();
+  let battle: SavedBattle | null = null;
+  try {
+    battle = loadBattle();
+  } catch {
+    battle = null;
+  }
   if (!battle) {
     query("#stats-empty").hidden = false;
     for (const id of STAT_SECTIONS) {
@@ -340,7 +357,15 @@ function refresh(): void {
   }
   if (battle.savedAt === lastSavedAt) return;
   lastSavedAt = battle.savedAt;
-  renderBattle(battle);
+  try {
+    renderBattle(battle);
+  } catch {
+    // 渲染异常时退化为空态，不让统计页每秒刷错
+    query("#stats-empty").hidden = false;
+    for (const id of STAT_SECTIONS) {
+      query<HTMLElement>(id).hidden = true;
+    }
+  }
 }
 
 // 战斗页与统计页可同时打开：跨标签页由 storage 事件即时同步，同页/兜底每秒轮询
