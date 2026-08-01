@@ -26,6 +26,10 @@ const AMBER = "#b45309";
 const ARTILLERY_COLOR = "#78716c";
 /** 火力单元点间距上限：行点少时保持 8px，行点过多时按翼宽压缩 */
 const DOT_SPACING = 8;
+/** 溃退后撤最大位移（像素）：随溃退进度线性增大，越接近离场退得越远 */
+const ROUT_DRIFT_MAX = 22;
+/** 有序撤退后撤最大位移（更克制，体现有序） */
+const RETREAT_DRIFT_MAX = 14;
 const BG_COLOR = "#faf7ef";
 const GRID_COLOR = "rgba(41, 37, 36, 0.09)";
 const TEXT_COLOR = "#292524";
@@ -223,6 +227,8 @@ export function drawBattlefield(
       RED_COLOR,
       RED_SOFT,
       sim.isRouting("red", i),
+      routDrift(sim, "red", i),
+      routFade(sim, "red", i),
     );
     drawWingFormation(
       ctx,
@@ -238,6 +244,8 @@ export function drawBattlefield(
       BLUE_COLOR,
       BLUE_SOFT,
       sim.isRouting("blue", i),
+      routDrift(sim, "blue", i),
+      routFade(sim, "blue", i),
     );
   }
 
@@ -619,6 +627,7 @@ function formationDotXY(
   farY: number,
   rows: readonly FormationRow[],
   dot: DotRef,
+  yOffset = 0,
 ): [number, number] {
   const totalRows = Math.max(1, rows.length);
   const space = Math.abs(farY - nearY);
@@ -630,8 +639,23 @@ function formationDotXY(
   return [
     centerX +
       (dot.col - (count - 1) / 2) * formationRowSpacing(rows, wingWidth),
-    nearY + dir * dot.row * spacing,
+    formationY(nearY, farY, dir, dot.row, spacing, yOffset),
   ];
+}
+
+/** 阵型纵坐标：加上后撤位移，并限制在阵型带内（避免溃兵冲进标签/炮兵区） */
+function formationY(
+  nearY: number,
+  farY: number,
+  dir: number,
+  row: number,
+  spacing: number,
+  yOffset: number,
+): number {
+  const y = nearY + dir * row * spacing + yOffset;
+  const lo = Math.min(nearY, farY) + 6;
+  const hi = Math.max(nearY, farY) - 6;
+  return Math.max(lo, Math.min(hi, y));
 }
 
 /** 翼内统一的横向点间距：以最满的一排为准；点少时保持 8px，满排行横贯翼宽 */
@@ -641,6 +665,37 @@ function formationRowSpacing(
 ): number {
   const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 1);
   return Math.min(DOT_SPACING, (wingWidth - 16) / maxCount);
+}
+
+/** 溃退/撤退后撤位移：红方朝上、蓝方朝下（远离中央战线），随进度增大 */
+function routDrift(
+  sim: Simulation,
+  side: "red" | "blue",
+  wingIndex: number,
+): number {
+  const remaining = sim.getRoutTicksRemaining(side, wingIndex);
+  if (remaining <= 0) return 0;
+  const retreating = sim.isRetreating(side, wingIndex);
+  const duration = retreating ? RETREAT_DURATION : ROUT_DURATION;
+  const maxShift = retreating ? RETREAT_DRIFT_MAX : ROUT_DRIFT_MAX;
+  const progress = 1 - remaining / duration;
+  const dir = side === "red" ? -1 : 1;
+  return dir * maxShift * progress;
+}
+
+/** 溃退/撤退淡出：越接近离场越透明（溃退散得更快，撤退保持清晰） */
+function routFade(
+  sim: Simulation,
+  side: "red" | "blue",
+  wingIndex: number,
+): number {
+  const remaining = sim.getRoutTicksRemaining(side, wingIndex);
+  if (remaining <= 0) return 1;
+  const retreating = sim.isRetreating(side, wingIndex);
+  const duration = retreating ? RETREAT_DURATION : ROUT_DURATION;
+  const progress = 1 - remaining / duration;
+  const minAlpha = retreating ? 0.6 : 0.25;
+  return 1 - (1 - minAlpha) * progress;
 }
 
 /** 攻击对象 → 画布坐标 */
@@ -678,6 +733,7 @@ function attackTargetXY(
     farY,
     rows,
     dot,
+    routDrift(sim, dot.side, dot.wing),
   );
 }
 
@@ -729,6 +785,7 @@ function drawFireArrows(
           farY,
           rows,
           source,
+          routDrift(sim, side, i),
         );
         const [tx, ty] = attackTargetXY(
           assignment.target,
@@ -785,6 +842,10 @@ function drawArtilleryArrows(
           height,
           sim,
         );
+        // 面杀伤：压制成形的炮弹落点画冲击圈，体现范围伤害
+        if (assignment.target.kind === "dot") {
+          drawArtilleryBlast(ctx, tx, ty);
+        }
         drawArrow(
           ctx,
           xs[assignment.icon] ?? centerX,
@@ -798,6 +859,42 @@ function drawArtilleryArrows(
       }
     }
   }
+}
+
+/** 火炮面杀伤标记：落点周围的半透明冲击圈与溅射点 */
+function drawArtilleryBlast(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = ARTILLERY_COLOR;
+  ctx.beginPath();
+  ctx.arc(x, y, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = ARTILLERY_COLOR;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(x, y, 21, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = ARTILLERY_COLOR;
+  const offsets = [
+    [-13, -9],
+    [14, -5],
+    [-7, 12],
+    [16, 14],
+  ] as const;
+  for (const [dx, dy] of offsets) {
+    ctx.beginPath();
+    ctx.arc(x + dx, y + dy, 1.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** 击杀线：上一回合实际击毙目标的那几条线，以实线高亮（短暂显示） */
@@ -832,6 +929,7 @@ function drawKillLines(
       farY,
       rows,
       source,
+      routDrift(sim, source.side, source.wing),
     );
     const [tx, ty] = attackTargetXY(assignment.target, width, height, sim);
     drawArrow(
@@ -853,6 +951,8 @@ function drawKillLines(
     const xs = batteryIconXs(centerX, wings[assignment.wing].guns);
     const y = batteryY(assignment.side, height);
     const [tx, ty] = attackTargetXY(assignment.target, width, height, sim);
+    // 击杀实线同样带面杀伤冲击圈
+    drawArtilleryBlast(ctx, tx, ty);
     drawArrow(
       ctx,
       xs[assignment.icon] ?? centerX,
@@ -878,6 +978,11 @@ function drawCavalryArrows(
   for (const charge of sim.getCavalryCharges()) {
     const wings = charge.side === "red" ? sim.redWings : sim.blueWings;
     const wing = wings[charge.wing];
+    const enemyWings = charge.side === "red" ? sim.blueWings : sim.redWings;
+    const enemy = enemyWings[charge.wing];
+    // 侧击冲锋用琥珀色，与步兵侧击箭头一致
+    const flanking =
+      enemy.front + enemy.middle + enemy.rear <= 0;
     const cavalry = wing.cavalry;
     const icons = cavalryIconCount(cavalry);
     const centerX = wingMargin + wingWidth * (charge.wing + 0.5);
@@ -908,7 +1013,11 @@ function drawCavalryArrows(
       sy,
       tx,
       ty,
-      charge.side === "red" ? RED_COLOR : BLUE_COLOR,
+      flanking
+        ? AMBER
+        : charge.side === "red"
+          ? RED_COLOR
+          : BLUE_COLOR,
       0.85,
       true,
     );
@@ -961,6 +1070,7 @@ function drawKillMarks(
       farY,
       rows,
       dot,
+      routDrift(sim, dot.side, dot.wing),
     );
     drawKillMark(ctx, x, y);
   }
@@ -1005,6 +1115,8 @@ function drawWingFormation(
   color: string,
   softColor: string,
   routing = false,
+  yOffset = 0,
+  fade = 1,
 ): void {
   // 一个点代表一个火力单元：每排点数 = 战场宽度 / 每点人数
   const rows = formationRows(front, middle, rear, wing, rowWidth);
@@ -1016,11 +1128,13 @@ function drawWingFormation(
   const dir = nearY <= farY ? 1 : -1;
   const fillColor = routing ? "#8f8b84" : color;
   const ringColor = routing ? "#8f8b84" : softColor;
-  const alpha = routing ? 0.55 : 1;
+  const frontAlpha = (routing ? 0.55 : 1) * fade;
+  const middleAlpha = (routing ? 0.4 : 0.6) * fade;
+  const rearAlpha = (routing ? 0.5 : 0.8) * fade;
   const dotSpacing = formationRowSpacing(rows, wingWidth);
 
   for (const row of rows) {
-    const y = nearY + dir * row.row * spacing;
+    const y = formationY(nearY, farY, dir, row.row, spacing, yOffset);
     // 点半径随横纵实际间距缩小，点数不设上限也不重叠
     const minSpacing = Math.min(dotSpacing, spacing || dotSpacing);
     const radius = Math.max(0.8, minSpacing * 0.46);
@@ -1031,7 +1145,7 @@ function drawWingFormation(
     for (let c = 0; c < row.count; c++) {
       const x = centerX + (c - (row.count - 1) / 2) * dotSpacing;
       if (row.echelon === "front") {
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = frontAlpha;
         ctx.fillStyle = fillColor;
         ctx.beginPath();
         ctx.arc(x, y, frontRadius, 0, Math.PI * 2);
@@ -1047,13 +1161,13 @@ function drawWingFormation(
         );
         ctx.fill();
       } else if (row.echelon === "middle") {
-        ctx.globalAlpha = routing ? 0.4 : 0.6;
+        ctx.globalAlpha = middleAlpha;
         ctx.fillStyle = fillColor;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        ctx.globalAlpha = routing ? 0.5 : 0.8;
+        ctx.globalAlpha = rearAlpha;
         ctx.strokeStyle = ringColor;
         ctx.lineWidth = 1.4;
         ctx.beginPath();

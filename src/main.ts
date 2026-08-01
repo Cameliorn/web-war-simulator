@@ -508,6 +508,8 @@ const paramInputs = [
   ...blueDeployInputs,
   ...redArtilleryInputs,
   ...blueArtilleryInputs,
+  ...redCavalryInputs,
+  ...blueCavalryInputs,
   randomnessInput,
   damageScaleInput,
   redMoraleInput,
@@ -554,33 +556,65 @@ const syncDamageScale = () => {
 damageScaleInput.addEventListener("input", syncDamageScale);
 syncDamageScale();
 
-// 占比类滑杆显示为归一化百分比（梯队 / 翼部署）
-function syncPercentageOutputs(
+/** 联动占比滑杆：拖动一个时，其余滑块按原比例缩放，总和保持 100，滑块与数值同步移动 */
+function bindLinkedPercentage(
   inputs: readonly HTMLInputElement[],
   outputs: readonly HTMLOutputElement[],
 ): void {
-  const sum =
-    inputs.reduce((total, el) => total + el.valueAsNumber, 0) || 1;
+  const TARGET = 100;
+  const sync = (changedIndex: number): void => {
+    const value = Math.max(
+      0,
+      Math.min(TARGET, inputs[changedIndex].valueAsNumber),
+    );
+    inputs[changedIndex].value = String(value);
+    const others = inputs.filter((_, j) => j !== changedIndex);
+    const prevSum = others.reduce((sum, el) => sum + el.valueAsNumber, 0);
+    const remaining = TARGET - value;
+    const shares: number[] = [];
+    if (prevSum <= 0) {
+      // 其余滑块全为 0：把剩余占比平均分给其余滑块
+      const base = Math.floor(remaining / others.length);
+      shares.push(...others.map(() => base));
+      let rest = remaining - base * others.length;
+      for (let k = 0; rest > 0; k = (k + 1) % others.length, rest--) {
+        shares[k]++;
+      }
+    } else {
+      const raw = others.map(
+        (el) => (el.valueAsNumber / prevSum) * remaining,
+      );
+      shares.push(...raw.map(Math.floor));
+      let rest = remaining - shares.reduce((a, b) => a + b, 0);
+      // 最大余数法补足取整误差，保证总和恰好 100
+      const order = raw
+        .map((v, k) => [v - Math.floor(v), k] as const)
+        .sort((a, b) => b[0] - a[0]);
+      for (let k = 0; rest > 0; k++, rest--) {
+        shares[order[k % order.length][1]]++;
+      }
+    }
+    others.forEach((el, k) => {
+      el.value = String(shares[k]);
+    });
+    inputs.forEach((el, k) => {
+      outputs[k].textContent = `${Math.round(el.valueAsNumber)}%`;
+    });
+  };
   inputs.forEach((input, i) => {
-    outputs[i].textContent = `${Math.round((input.valueAsNumber / sum) * 100)}%`;
+    input.addEventListener("input", () => sync(i));
   });
+  sync(0);
 }
 
+// 梯队配置：联动占比（前/中/后）
 [redEchelonInputs, blueEchelonInputs].forEach((inputs, side) => {
-  const outputs = side === 0 ? redEchelonOuts : blueEchelonOuts;
-  inputs.forEach((input) => {
-    input.addEventListener("input", () => syncPercentageOutputs(inputs, outputs));
-  });
-  syncPercentageOutputs(inputs, outputs);
+  bindLinkedPercentage(inputs, side === 0 ? redEchelonOuts : blueEchelonOuts);
 });
 
-// 翼部署：每翼占比滑杆（左/中/右），归一化显示
+// 翼部署：联动占比（左/中/右）
 [redDeployInputs, blueDeployInputs].forEach((inputs, side) => {
-  const outputs = side === 0 ? redDeployOuts : blueDeployOuts;
-  inputs.forEach((input) => {
-    input.addEventListener("input", () => syncPercentageOutputs(inputs, outputs));
-  });
-  syncPercentageOutputs(inputs, outputs);
+  bindLinkedPercentage(inputs, side === 0 ? redDeployOuts : blueDeployOuts);
 });
 
 // 主循环：渲染跟随 rAF；整回合结算由定时器驱动（后台标签页也能继续推进）

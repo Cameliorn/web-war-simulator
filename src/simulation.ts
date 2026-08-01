@@ -190,6 +190,8 @@ interface CavalryUnitState {
   chargeTicks: number;
   /** 冲锋中：下一回合结算一次对决（保留一回合可见的冲锋状态） */
   attacking: boolean;
+  /** 冲锋剩余可见回合数（倒计时到 0 才结算对决） */
+  attackTicks: number;
   /** 本次冲锋的目标（结算与绘制共用） */
   target: DotRef | null;
 }
@@ -265,6 +267,8 @@ const RETREAT_TARGET_KILL_MULT = 0.5;
 export const KILL_MARK_TICKS = 8;
 /** 骑兵蓄力回合数：准备状态持续该回合数后发动一次冲锋 */
 export const CAVALRY_CHARGE_TICKS = 30;
+/** 骑兵冲锋可见回合数：进入冲锋状态后保留该回合数再结算对决 */
+const CAVALRY_ATTACK_TICKS = 3;
 /** 骑兵对决基础胜率：配合 2 倍杀伤，单次冲锋期望交换比为正但风险高 */
 const CAVALRY_DUEL_CHANCE = 0.4;
 /** 每个骑兵单元代表的骑兵人数（历史配比约 5%~10%，默认 900 人 = 9%） */
@@ -616,6 +620,7 @@ export class Simulation {
             id: cavalryId++,
             chargeTicks: CAVALRY_CHARGE_TICKS,
             attacking: false,
+            attackTicks: 0,
             target: null,
           }),
         ),
@@ -1326,6 +1331,12 @@ export class Simulation {
         while (idx < units.length) {
           const unit = units[idx];
           if (unit.attacking) {
+            // 冲锋状态保留数回合再结算，让攻击动画清晰可见
+            unit.attackTicks -= dt;
+            if (unit.attackTicks > 0) {
+              idx++;
+              continue;
+            }
             this.resolveCavalryDuel(side, i, idx, unit, noise, duelRng);
             if (unit.attacking) {
               // 阵亡：单元已被移除，idx 保持原位继续下一个
@@ -1338,8 +1349,9 @@ export class Simulation {
           } else {
             unit.chargeTicks -= dt;
             if (unit.chargeTicks <= 0) {
-              // 蓄满：进入冲锋状态并锁定目标（下一回合结算，冲锋状态可见一回合）
+              // 蓄满：进入冲锋状态并锁定目标（保留 3 回合冲锋动画后结算）
               unit.attacking = true;
+              unit.attackTicks = CAVALRY_ATTACK_TICKS;
               unit.target = this.pickCavalryTarget(side, i, unit);
             }
             idx++;
@@ -1384,8 +1396,11 @@ export class Simulation {
   ): void {
     const wing = (side === "red" ? this.redWings : this.blueWings)[wingIndex];
     const candidates = this.cavalryTargetCandidates(side, wingIndex);
-    // 没有可攻击目标：退回蓄力，不算对决失败
-    if (candidates.length === 0) return;
+    // 没有可攻击目标：退回蓄力，不算对决失败（避免一直停留在冲锋状态）
+    if (candidates.length === 0) {
+      unit.attacking = false;
+      return;
+    }
     const target = unit.target ?? candidates[0];
     // 主目标可能随阵型变化失效：退回候选第一个
     const targetValid = candidates.some(
