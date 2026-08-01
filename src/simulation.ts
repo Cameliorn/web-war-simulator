@@ -146,8 +146,10 @@ export interface KillStats {
 }
 
 export interface ArtilleryTargets {
-  /** 是否对敌方本翼火炮进行反炮射击 */
+  /** 是否对敌方火炮进行反炮射击 */
   counterBattery: boolean;
+  /** 反炮目标翼（压制指定翼时同步指向该翼） */
+  counterWing: number;
   /** 火炮压制的敌翼列表 */
   formations: number[];
 }
@@ -775,10 +777,6 @@ export class Simulation {
       enemyInitial[wingIndex],
     );
     const batteryOrder = this.orders[side].batteries[wingIndex];
-    const counterOn =
-      batteryOrder.counterBattery === "off"
-        ? false
-        : batteryOrder.counterBattery === "on" || enemy.guns > 0;
     // 自动目标：当面翼存活时压制当面，被歼后转向其余存活翼
     const autoFormations = (): number[] =>
       enemyAlive
@@ -795,6 +793,7 @@ export class Simulation {
           );
     // 将领指定压制目标：指定敌翼存活时压制该翼，已灭则退回自动
     let formations: number[];
+    let counterWing = wingIndex;
     if (batteryOrder.target !== "auto") {
       const ordered = batteryOrder.target as number;
       if (
@@ -806,14 +805,22 @@ export class Simulation {
         )
       ) {
         formations = [ordered];
+        counterWing = ordered;
       } else {
         formations = autoFormations();
       }
     } else {
       formations = autoFormations();
     }
+    // 自动反炮同样跟随有效目标翼：压制侧翼时就反侧翼的炮
+    const counterOn =
+      batteryOrder.counterBattery === "off"
+        ? false
+        : batteryOrder.counterBattery === "on" ||
+          enemyWings[counterWing].guns > 0;
     return {
-      counterBattery: counterOn && enemy.guns > 0,
+      counterBattery: counterOn && enemyWings[counterWing].guns > 0,
+      counterWing,
       formations,
     };
   }
@@ -1048,7 +1055,9 @@ export class Simulation {
           counterIcons = planTick % 2 === 0 ? 1 : 0;
         }
         const enemyGuns =
-          (enemySide === "red" ? this.redWings : this.blueWings)[i].guns;
+          (enemySide === "red" ? this.redWings : this.blueWings)[
+            targets.counterWing
+          ].guns;
         const enemyIcons = gunIconCount(enemyGuns);
 
         for (let icon = 0; icon < icons; icon++) {
@@ -1057,7 +1066,7 @@ export class Simulation {
             target = {
               kind: "battery",
               side: enemySide,
-              wing: i,
+              wing: targets.counterWing,
               icon: Math.floor(rng() * enemyIcons),
             };
           } else if (candidates.length > 0) {
