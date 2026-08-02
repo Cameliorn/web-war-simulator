@@ -588,7 +588,7 @@ figcaption {
 
 #stats-summary {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -722,9 +722,16 @@ figcaption {
   margin: 0 auto;
 }
 
+.wing-chart-label {
+  margin: 4px 0 8px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
 @media (max-width: 760px) {
   #stats-summary {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 
   #stats-config dl {

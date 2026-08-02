@@ -331,6 +331,8 @@ function saveBattleStats(sim: Simulation): void {
     history: downsampleHistory(sim.history),
     redWings: sim.redWings,
     blueWings: sim.blueWings,
+    redEscaped: [0, 1, 2].map((i) => sim.getEscaped("red", i)),
+    blueEscaped: [0, 1, 2].map((i) => sim.getEscaped("blue", i)),
     redWingInitial: [0, 1, 2].map((i) => ({
       front: sim.redWingFrontInitial[i],
       middle: sim.redWingMiddleInitial[i],

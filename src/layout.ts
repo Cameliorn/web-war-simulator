@@ -10,12 +10,12 @@ export interface FormationRow {
   count: number;
 }
 
-/** 火力单元射击间隔（回合）：千回合约 70 发，每个点并非每回合射击 */
-export const FIRE_INTERVAL = 14;
+/** 三段击轮转周期（回合）：前三排为一连，连内三排依次开火，每排 3 回合射一次 */
+export const RANK_CYCLE = 3;
 
-/** 每个点代表的士兵数：中军 25 人、两翼 19 人（单元粒度，与排容量换算共用） */
-export function soldiersPerDot(wing: number): number {
-  return wing === 1 ? 25 : 19;
+/** 每个点代表的士兵数：全翼统一 22 人（单元粒度，与排容量换算共用） */
+export function soldiersPerDot(_wing: number): number {
+  return 22;
 }
 
 /**

@@ -1,5 +1,5 @@
 import {
-  FIRE_INTERVAL,
+  RANK_CYCLE,
   cavalryIconCount,
   formationRows,
   gunIconCount,
@@ -137,6 +137,8 @@ export interface WingKills {
   infantry: number;
   /** 火炮击杀（含反炮摧毁火炮、面杀伤折算） */
   artillery: number;
+  /** 骑兵击杀（对决失败被歼灭的敌骑兵单元折算成人数） */
+  cavalry: number;
 }
 
 /** 双方各翼击杀统计 */
@@ -269,6 +271,8 @@ const ROUT_TARGET_KILL_MULT = 2;
 const RETREAT_TARGET_KILL_MULT = 0.5;
 /** 红叉标记保留回合数（暂停观察时也保留） */
 export const KILL_MARK_TICKS = 8;
+/** 击杀实线保留回合数：近若干回合的击杀一起显示，避免单回合击杀稀疏到几乎看不到 */
+const KILL_LINE_TURNS = 4;
 /** 骑兵蓄力回合数：准备状态持续该回合数后发动一次冲锋 */
 export const CAVALRY_CHARGE_TICKS = 30;
 /** 骑兵冲锋可见回合数：进入冲锋状态后保留该回合数再结算对决 */
@@ -425,8 +429,8 @@ export class Simulation {
   private fireAssignmentsCache: FireAssignment[] = [];
   private gunAssignmentsCache: GunAssignment[] = [];
   /** 上一回合实际造成击杀的攻击线（渲染为实线击杀线） */
-  private soldierKillLines: FireAssignment[] = [];
-  private artilleryKillLines: GunAssignment[] = [];
+  private soldierKillLines: Array<{ tick: number; line: FireAssignment }> = [];
+  private artilleryKillLines: Array<{ tick: number; line: GunAssignment }> = [];
   /** 近若干回合被击毙的士兵点（渲染红叉标记） */
   private killedDotHistory: Array<{ dot: DotRef; tick: number }> = [];
   /** 近若干回合被摧毁的火炮图标（渲染红叉标记） */
@@ -474,6 +478,11 @@ export class Simulation {
   private outcomes: { red: WingOutcome[]; blue: WingOutcome[] } = {
     red: ["alive", "alive", "alive"],
     blue: ["alive", "alive", "alive"],
+  };
+  /** 各翼成功离场（有序撤退成功 / 溃逃成功）的存活人数：已离开战场、不再计入战场留存 */
+  private escaped: { red: number[]; blue: number[] } = {
+    red: [0, 0, 0],
+    blue: [0, 0, 0],
   };
 
   constructor(config: BattleConfig) {
@@ -552,8 +561,8 @@ export class Simulation {
       blue: initCavalry(config.blueCavalry ?? []),
     };
     this.killStats = {
-      red: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
-      blue: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0 })),
+      red: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0, cavalry: 0 })),
+      blue: [0, 1, 2].map(() => ({ infantry: 0, artillery: 0, cavalry: 0 })),
     };
     this.morale = {
       red: [0, 1, 2].map(() => config.redMorale),
@@ -619,8 +628,13 @@ export class Simulation {
 
     const dt = Math.min(dtTicks, MAX_STEP_TICKS);
     const noise = this.buildNoise();
-    this.soldierKillLines = [];
-    this.artilleryKillLines = [];
+    // 击杀实线按回合保留：只保留最近 KILL_LINE_TURNS 回合的击杀
+    this.soldierKillLines = this.soldierKillLines.filter(
+      (entry) => entry.tick > this.tick - KILL_LINE_TURNS,
+    );
+    this.artilleryKillLines = this.artilleryKillLines.filter(
+      (entry) => entry.tick > this.tick - KILL_LINE_TURNS,
+    );
     this.tickCasualties = { red: [0, 0, 0], blue: [0, 0, 0] };
     this.tickKills = { red: [0, 0, 0], blue: [0, 0, 0] };
     // 红叉按回合保留：只保留最近 KILL_MARK_TICKS 回合的击杀
@@ -754,6 +768,11 @@ export class Simulation {
   /** 翼的最终状态：存活 / 溃退中 / 逃生成功 / 溃退中被歼 */
   getWingOutcome(side: "red" | "blue", wingIndex: number): WingOutcome {
     return this.outcomes[side][wingIndex];
+  }
+
+  /** 指定翼成功离场（撤退/溃逃）的存活人数，统计页用它区分战场留存与战后存活 */
+  getEscaped(side: "red" | "blue", wingIndex: number): number {
+    return this.escaped[side][wingIndex];
   }
 
   /** 目标翼的离场杀伤倍率：溃退 2 倍、有序撤退 0.5 倍、正常 1 倍 */
@@ -894,14 +913,14 @@ export class Simulation {
     this.assignmentCachePlan = -1;
   }
 
-  /** 上一回合士兵实际击毙目标造成的攻击线（实线击杀线） */
+  /** 近若干回合士兵实际击毙目标造成的攻击线（实线击杀线） */
   getSoldierKillLines(): FireAssignment[] {
-    return this.soldierKillLines;
+    return this.soldierKillLines.map((entry) => entry.line);
   }
 
-  /** 上一回合火炮实际击毙目标造成的攻击线（实线击杀线） */
+  /** 近若干回合火炮实际击毙目标造成的攻击线（实线击杀线） */
   getArtilleryKillLines(): GunAssignment[] {
-    return this.artilleryKillLines;
+    return this.artilleryKillLines.map((entry) => entry.line);
   }
 
   /** 近若干回合被击毙的士兵点（渲染红叉） */
@@ -994,8 +1013,9 @@ export class Simulation {
         const batteryIcons = gunIconCount(enemyGuns);
 
         for (let k = 0; k < attackers.length; k++) {
-          // 射击节奏：每个火力单元每 FIRE_INTERVAL 回合射击一次（千回合约 70 发）
-          if ((planTick + k) % FIRE_INTERVAL !== 0) continue;
+          // 三段击：前三排为一连，本回合只有 planTick % RANK_CYCLE 那一排开火，
+          // 连内三排按此周期依次轮转（每排 3 回合射一次）
+          if (attackers[k].row !== planTick % RANK_CYCLE) continue;
           let target: AttackTarget | null = null;
           const toBattery =
             battery && (k % 4 === 0 || candidates.length === 0);
@@ -1130,7 +1150,7 @@ export class Simulation {
               assignment.target.dot.wing,
             )
           : 1;
-      // 单发威力按射击间隔补偿：每点射击频率降为 1/间隔，但每发歼灭一个单元，
+      // 单发威力按轮转周期补偿：每排 3 回合才射一次，但每发歼灭一个单元，
       // 单元规模因子在「射击次数 × 单元人数」中相互抵消，聚合杀伤率与原模型一致
       const killChance =
         coeff *
@@ -1138,7 +1158,7 @@ export class Simulation {
         dt *
         this.config.damageScale *
         targetMult *
-        FIRE_INTERVAL;
+        RANK_CYCLE;
 
       if (assignment.target.kind === "battery") {
         const enemyWings =
@@ -1169,7 +1189,9 @@ export class Simulation {
           source.wing,
           "infantry",
         );
-        if (killed) this.soldierKillLines.push(assignment);
+        if (killed) {
+          this.soldierKillLines.push({ tick: this.tick, line: assignment });
+        }
       }
     }
   }
@@ -1242,7 +1264,7 @@ export class Simulation {
         ARTILLERY_DAMAGE_MULT *
         targetMult;
       // 面杀伤按前排占比折算为对目标点的击毙概率：
-      // 概率 = 前排应受伤害（人）÷ 每点人数（一个点代表 25/19 人），
+      // 概率 = 前排应受伤害（人）÷ 每点人数（一个点代表 22 人），
       // 与中排/后排直接按人扣减保持同一聚合口径
       const frontKillChance =
         (damage * (target.front / total)) / soldiersPerDot(dot.wing);
@@ -1254,7 +1276,9 @@ export class Simulation {
         assignment.wing,
         "artillery",
       );
-      if (killed) this.artilleryKillLines.push(assignment);
+      if (killed) {
+        this.artilleryKillLines.push({ tick: this.tick, line: assignment });
+      }
       let loss = 0;
       if (target.middle > 0) {
         const middleLoss = Math.min(
@@ -1397,7 +1421,7 @@ export class Simulation {
       }
       unit.attacking = false;
     } else {
-      // 对决失败：自身阵亡一个单元，目标无损失
+      // 对决失败：自身阵亡一个单元，目标无损失；击杀记在目标翼头上
       const beforeIcons = cavalryIconCount(wing.cavalry);
       wing.cavalry = Math.max(0, wing.cavalry - 1);
       const afterIcons = wing.cavalry <= 0 ? 0 : cavalryIconCount(wing.cavalry);
@@ -1411,6 +1435,8 @@ export class Simulation {
         });
       }
       this.cavalryUnits[side][wingIndex].splice(unitIndex, 1);
+      this.killStats[side === "red" ? "blue" : "red"][primary.wing].cavalry +=
+        CAVALRY_PER_DOT;
     }
   }
 
@@ -1613,7 +1639,8 @@ export class Simulation {
             this.routTicks[side][i] = 0;
             this.retreatKind[side][i] = null;
           } else if (remaining <= 1) {
-            // 倒计时结束，离场成功
+            // 倒计时结束，离场成功：剩余兵力全部存活离场，记入战后存活
+            this.escaped[side][i] = totalAfter;
             this.zeroWing(side, i, slots);
             this.outcomes[side][i] = kind === "retreat" ? "retreated" : "fled";
             this.routTicks[side][i] = 0;
